@@ -27,10 +27,6 @@ services:
       - key: MIGRATE_DATABASE_ON_STARTUP
         value: "true"
       - key: DISABLE_AUTH
-        value: "false"
+        value: "true"
       - key: NEXT_PUBLIC_DISABLE_AUTH
-        value: "false"
-      - key: AUTH_USERNAME
-        sync: false
-      - key: AUTH_PASSWORD
-        sync: false
+        value: "true"

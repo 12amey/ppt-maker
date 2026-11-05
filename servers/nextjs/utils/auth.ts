@@ -4,6 +4,16 @@ export function isTruthyAuthValue(value?: string | null): boolean {
 }
 
 export function getDisableAuthValue(): string | undefined {
+  // This app's public Render deployment intentionally starts without login.
+  // Check the hostname before window.env so stale service variables cannot
+  // bring the admin setup screen back after a deploy.
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname.toLowerCase() === "ppt-maker-nuss.onrender.com"
+  ) {
+    return "true";
+  }
+
   if (typeof window !== "undefined" && window.env?.DISABLE_AUTH) {
     return window.env.DISABLE_AUTH;
   }

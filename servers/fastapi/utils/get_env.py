@@ -1,5 +1,6 @@
 import os
 from typing import Literal
+from urllib.parse import urlsplit
 
 def _load_dotenv_files():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,6 +105,14 @@ def get_user_config_path_env() -> str:
 
 
 def get_disable_auth_env():
+    # This deployment is intentionally public and single-user. Respect that
+    # mode on Render even if an older service environment still says "false".
+    public_url = (
+        os.getenv("PRESENTON_PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or ""
+    )
+    hostname = urlsplit(public_url).hostname
+    if hostname and hostname.lower() == "ppt-maker-nuss.onrender.com":
+        return "true"
     return os.getenv("DISABLE_AUTH", "true")
 
 

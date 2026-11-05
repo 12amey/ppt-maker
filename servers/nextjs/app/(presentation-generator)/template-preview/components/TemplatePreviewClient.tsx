@@ -31,6 +31,7 @@ import {
   type TemplateTheme,
 } from "@/lib/template-theme";
 import TemplateService from "../../services/api/template";
+import { PresentationGenerationApi } from "../../services/api/presentation-generation";
 import { useTemplateDetails } from "../../hooks/useTemplateDetails";
 import {
   useFontLoader as loadFontAssets,
@@ -45,6 +46,7 @@ import { LayoutsPanel } from "./editor/LayoutsPanel";
 import { ResponsiveSlideFrame } from "./editor/ResponsiveSlideFrame";
 import { TemplateEditorHeader } from "./editor/TemplateEditorHeader";
 import {
+  AiPanel,
   SchemaPanel,
   TemplateInsertPanel,
   ToolRail,
@@ -170,7 +172,9 @@ const GroupLayoutPreview = ({
   const [editableLayouts, setEditableLayouts] = useState<TemplateV2Layout[]>([]);
   const editableLayoutsRef = useRef<TemplateV2Layout[]>([]);
   const [activeLayoutIndex, setActiveLayoutIndex] = useState(0);
-  const [activePanel, setActivePanel] = useState<PanelMode>("schema");
+  const [activePanel, setActivePanel] = useState<PanelMode>("ai");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiMode, setAiMode] = useState<"edit" | "new">("edit");
   const [density, setDensity] = useState<Density>("");
   const [openFieldId, setOpenFieldId] = useState("");
   const [templateNameDraft, setTemplateNameDraft] = useState("Template");
@@ -185,6 +189,7 @@ const GroupLayoutPreview = ({
     });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isOpeningTemplate, setIsOpeningTemplate] = useState(false);
   const [isReconstructing, setIsReconstructing] = useState(false);
   const [promptLayoutId, setPromptLayoutId] = useState<string | null>(null);
   const [isPromptGenerating, setIsPromptGenerating] = useState(false);
@@ -588,7 +593,7 @@ const GroupLayoutPreview = ({
   ]);
 
   const createBlankLayout = useCallback(() => {
-    if (!canEditTemplate) return;
+    if (!canEditTemplate) return null;
     resetContentDensity();
 
     const blankLayout = blankLayoutWithFullSlideRectangle(
@@ -612,6 +617,7 @@ const GroupLayoutPreview = ({
       typeof blankLayout.id === "string" ? blankLayout.id : null,
     );
     setHasUnsavedChanges(true);
+    return typeof blankLayout.id === "string" ? blankLayout.id : null;
   }, [
     activeLayoutIndex,
     canEditTemplate,
@@ -620,23 +626,28 @@ const GroupLayoutPreview = ({
   ]);
 
   const generatePromptedLayout = useCallback(
-    async (prompt: string) => {
+    async (
+      prompt: string,
+      requestedLayoutId = promptLayoutId,
+      operation: "edit" | "new" = "new",
+    ) => {
+      const targetLayoutId = requestedLayoutId;
       if (
         !canEditTemplate ||
         !templateId ||
-        !promptLayoutId ||
+        !targetLayoutId ||
         isPromptGenerating
       ) {
         return false;
       }
 
       const targetIndex = editableLayoutsRef.current.findIndex(
-        (layout, index) => readLayoutId(layout, index) === promptLayoutId,
+        (layout, index) => readLayoutId(layout, index) === targetLayoutId,
       );
       if (targetIndex < 0) {
         notify.error(
           "Slide unavailable",
-          "The blank slide is no longer available. Add a new one and try again.",
+          "The selected slide is no longer available. Select a slide and try again.",
         );
         setPromptLayoutId(null);
         return false;
@@ -648,6 +659,7 @@ const GroupLayoutPreview = ({
         const response = await TemplateService.generateTemplateLayout({
           template_id: templateId,
           prompt,
+          ...(operation === "edit" && activeLayout ? { source_layout: activeLayout } : {}),
         });
         if (!isRecord(response.layout)) {
           throw new Error("No generated layout was returned.");
@@ -656,7 +668,7 @@ const GroupLayoutPreview = ({
 
         updateEditableLayouts((currentLayouts) =>
           currentLayouts.map((currentLayout, index) => {
-            if (readLayoutId(currentLayout, index) !== promptLayoutId) {
+            if (readLayoutId(currentLayout, index) !== targetLayoutId) {
               return currentLayout;
             }
 
@@ -664,26 +676,28 @@ const GroupLayoutPreview = ({
             const idIsAlreadyUsed = currentLayouts.some(
               (candidate, candidateIndex) =>
                 readLayoutId(candidate, candidateIndex) === generatedId &&
-                readLayoutId(candidate, candidateIndex) !== promptLayoutId,
+                readLayoutId(candidate, candidateIndex) !== targetLayoutId,
             );
 
             return {
               ...generatedLayout,
-              id: idIsAlreadyUsed ? promptLayoutId : generatedId,
+              id: idIsAlreadyUsed ? targetLayoutId : generatedId,
             };
           }),
         );
         setPromptLayoutId(null);
         setHasUnsavedChanges(true);
         notify.success(
-          "Slide created",
-          `Slide ${targetIndex + 1} was generated. Save to keep it.`,
+          operation === "edit" ? "Slide updated" : "Slide created",
+          operation === "edit"
+            ? `AI updated the editable text on slide ${targetIndex + 1}. Save to keep the changes.`
+            : `Slide ${targetIndex + 1} was generated. Save to keep it.`,
         );
         track(ANALYTICS_EVENTS.TEMPLATE_PREVIEW_LAYOUT_RECONSTRUCTED, {
           template_id: templateId,
           layout_index: targetIndex,
           duration_ms: Date.now() - startedAt,
-          source: "blank_slide_prompt",
+          source: operation === "edit" ? "ai_edit_slide" : "blank_slide_prompt",
         });
         return true;
       } catch (generationError) {
@@ -697,7 +711,7 @@ const GroupLayoutPreview = ({
           template_id: templateId,
           layout_index: targetIndex,
           duration_ms: Date.now() - startedAt,
-          source: "blank_slide_prompt",
+          source: operation === "edit" ? "ai_edit_slide" : "blank_slide_prompt",
           ...getPresentationErrorProperties(generationError),
         });
         return false;
@@ -706,6 +720,7 @@ const GroupLayoutPreview = ({
       }
     },
     [
+      activeLayout,
       canEditTemplate,
       isPromptGenerating,
       promptLayoutId,
@@ -713,6 +728,38 @@ const GroupLayoutPreview = ({
       updateEditableLayouts,
     ],
   );
+
+  const submitAiPrompt = useCallback(async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt || isPromptGenerating) return;
+    if (aiMode === "edit") {
+      if (!activeLayout) {
+        notify.warning("Select a slide", "Choose a slide before asking AI to edit it.");
+        return;
+      }
+      const targetLayoutId = readLayoutId(activeLayout, activeLayoutIndex);
+      const editPrompt = [
+        "Edit the requested text in any editable component on the selected slide. Preserve its layout and visual design. Return the complete updated slide layout.",
+        `User request: ${prompt}`,
+      ].join("\n\n");
+      const generated = await generatePromptedLayout(editPrompt, targetLayoutId, "edit");
+      if (generated) setAiPrompt("");
+      return;
+    }
+    const targetLayoutId = promptLayoutId ?? createBlankLayout();
+    if (!targetLayoutId) return;
+    const generated = await generatePromptedLayout(prompt, targetLayoutId, "new");
+    if (generated) setAiPrompt("");
+  }, [
+    aiPrompt,
+    aiMode,
+    activeLayout,
+    activeLayoutIndex,
+    createBlankLayout,
+    generatePromptedLayout,
+    isPromptGenerating,
+    promptLayoutId,
+  ]);
 
   const moveActiveLayout = useCallback(
     (direction: -1 | 1) => {
@@ -1121,6 +1168,27 @@ const GroupLayoutPreview = ({
     templateNameDraft,
   ]);
 
+  const openTemplateInPresentation = useCallback(async () => {
+    if (!templateId || isOpeningTemplate || hasUnsavedChanges) return;
+
+    setIsOpeningTemplate(true);
+    try {
+      const presentation =
+        await PresentationGenerationApi.createPresentationFromTemplate(templateId);
+      router.push(
+        `/presentation?id=${encodeURIComponent(presentation.id)}&editor=v2&assistant=open`,
+      );
+    } catch (openError) {
+      notify.error(
+        "Could not open template",
+        openError instanceof Error
+          ? openError.message
+          : "Something went wrong while opening the presentation editor.",
+      );
+      setIsOpeningTemplate(false);
+    }
+  }, [hasUnsavedChanges, isOpeningTemplate, router, templateId]);
+
   const openDeleteTemplateDialog = useCallback(() => {
     if (!templateId || template?.is_default) return;
     setIsDeleteDialogOpen(true);
@@ -1212,6 +1280,7 @@ const GroupLayoutPreview = ({
         canDelete={!template.is_default}
         hasUnsavedChanges={hasUnsavedChanges}
         isSaving={isSaving}
+        isOpeningTemplate={isOpeningTemplate}
         templateName={templateNameDraft}
         onBack={() => router.push("/templates")}
         onCopy={copyTemplateId}
@@ -1222,6 +1291,7 @@ const GroupLayoutPreview = ({
         onRedo={() => runHistoryCommand("redo")}
         onSave={saveTemplate}
         onUndo={() => runHistoryCommand("undo")}
+        onUseTemplate={() => void openTemplateInPresentation()}
       />
 
       <main className="flex min-h-0 flex-1  overflow-hidden bg-[#FBFBFA]">
@@ -1310,7 +1380,16 @@ const GroupLayoutPreview = ({
                 setActivePanel(nextPanel);
               }}
             />
-            {activePanel === "layouts" ? (
+            {activePanel === "ai" ? (
+              <AiPanel
+                prompt={aiPrompt}
+                onPromptChange={setAiPrompt}
+                onSubmit={() => void submitAiPrompt()}
+                mode={aiMode}
+                onModeChange={setAiMode}
+                isGenerating={isPromptGenerating}
+              />
+            ) : activePanel === "layouts" ? (
               <LayoutsPanel
                 activeLayoutIndex={activeLayoutIndex}
                 layouts={editableLayouts}

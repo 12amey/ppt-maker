@@ -26,10 +26,12 @@ skills-lock.json
 .DS_Store
 .codex
 eng.traineddata
+.cache/
+cloudflared.exe
+tools/ComfyUI/
 
 # presenton-export runtime (downloaded via scripts/sync-presentation-export.cjs or Docker build)
 presentation-export/
-.cache/presentation-export/
 servers/fastapi/build/
 servers/fastapi/dist/
 servers/fastapi/fastembed_cache/

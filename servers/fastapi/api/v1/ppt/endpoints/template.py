@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from datetime import datetime
 from functools import partial
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Literal, Optional
 from urllib.parse import unquote, urlencode, urlparse
 
 from fastapi import (
@@ -125,6 +125,7 @@ def _build_template_preview_url(request: Request, template_id: str) -> str:
 
 
 class InitTemplateRequest(BaseModel):
+    import_mode: Literal["ai", "preserve"] = "ai"
     pptx_url: str = Field(
         min_length=1,
         description=(
@@ -281,6 +282,7 @@ class GenerateTemplateLayoutRequest(BaseModel):
 
     template_id: str = Field(validation_alias=AliasChoices("template_id", "id"))
     prompt: str = Field(min_length=1, max_length=8000)
+    source_layout: SlideLayout | None = None
 
     @model_validator(mode="after")
     def _normalize_prompt(self) -> "GenerateTemplateLayoutRequest":
@@ -1290,6 +1292,7 @@ async def init_template(
         layouts=None,
         assets={
             **_explicit_template_generation_options(request),
+            **({"import_mode": "preserve"} if request.import_mode == "preserve" else {}),
             "pptx_url": request.pptx_url,
             "icon_type": icon_type,
             "icon_weight": icon_type,
@@ -1593,7 +1596,8 @@ async def create_template(
         status=AsyncTaskStatus.PENDING,
         message="Queued for template creation",
         payload={
-            **request.model_dump(mode="json", exclude={"generation_options"}),
+            **request.model_dump(mode="json", exclude={"generation_options", "import_mode"}),
+            **({"import_mode": "preserve"} if request.import_mode == "preserve" else {}),
             **_explicit_template_generation_options(request),
         },
     )
@@ -1742,15 +1746,30 @@ async def generate_template_layout_from_prompt(
         request.template_id,
         len(template_layouts.layouts),
     )
+    generation_prompt = request.prompt
+    if request.source_layout is not None:
+        source_layout_ids = {layout.id for layout in template_layouts.layouts}
+        if request.source_layout.id not in source_layout_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="The selected slide does not belong to this template",
+            )
+        generation_prompt = (
+            "Edit the selected existing template slide. "
+            "Update the requested text in any editable component and preserve "
+            "the original layout and visual design.\n\n"
+            f"User request: {request.prompt}"
+        )
     try:
         layout = await _run_template_generation_thread(
             generate_prompted_slide_layout,
-            request.prompt,
+            generation_prompt,
             template_layouts,
             merged_components,
             template.name,
             template.description,
             _get_template_fonts(template),
+            request.source_layout,
         )
     except Exception as exc:
         LOGGER.exception(
@@ -1816,6 +1835,13 @@ async def create_template_slide_layouts(
     indices = request.layout_indices
     if any(index >= len(raw_layouts.layouts) for index in indices):
         raise HTTPException(status_code=400, detail="Invalid slide index")
+
+    if (template.assets or {}).get("import_mode") == "preserve":
+        from services.template_preservation import preserve_source_layout
+        return CreateTemplateLayoutsResponse(layouts=[
+            {"index": index, "layout": preserve_source_layout(raw_layouts.layouts[index], index)}
+            for index in indices
+        ])
 
     slide_image_urls = _get_template_slide_image_urls(template)
     missing_slide_image = any(
@@ -1898,10 +1924,20 @@ async def generate_template_blocks(
             detail="Template layouts are invalid",
         ) from exc
 
-    merged_components, generated_theme = await asyncio.gather(
-        _merge_generated_components(layouts),
-        _generate_generated_theme(layouts, _get_template_fonts(template)),
-    )
+    if (template.assets or {}).get("import_mode") == "preserve":
+        # Source components are already reusable. Import must not require a
+        # vision model, or turn a successful import into a provider error.
+        from templates.v2.models.layouts import MergedComponent
+        merged_components = MergedComponents(components=[
+            MergedComponent(id=component.id, description=component.description, variants=[component])
+            for layout in layouts.layouts for component in layout.components
+        ])
+        generated_theme = None
+    else:
+        merged_components, generated_theme = await asyncio.gather(
+            _merge_generated_components(layouts),
+            _generate_generated_theme(layouts, _get_template_fonts(template)),
+        )
     template.merged_components = merged_components.model_dump(
         mode="json",
         exclude_none=True,

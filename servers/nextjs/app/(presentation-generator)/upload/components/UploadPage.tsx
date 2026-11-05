@@ -312,6 +312,8 @@ const UploadPage = ({
     }
 
     const params = new URLSearchParams({ id: presentationId });
+    const template = new URLSearchParams(window.location.search).get("template");
+    if (template) params.set("template", template);
     return `/outline?${params.toString()}`;
   };
 

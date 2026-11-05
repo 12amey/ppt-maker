@@ -1,5 +1,11 @@
 .git
 .gitignore
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+**/*.env
 
 node_modules
 **/node_modules
@@ -13,6 +19,9 @@ node_modules
 **/fastembed_cache
 **/chroma
 .cache
+cloudflared.exe
+tools/ComfyUI
+servers/fastapi/en_core_web_sm-3.8.0-py3-none-any.whl
 app_data
 presentation-export
 servers/fastapi/tests

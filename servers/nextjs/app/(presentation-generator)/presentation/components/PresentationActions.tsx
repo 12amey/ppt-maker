@@ -24,6 +24,7 @@ import {
   Diamond,
   Droplet,
   Flag,
+  FileUp,
   Gauge,
   Grid3X3,
   GripVertical,
@@ -63,7 +64,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
-import type { SlideElement } from "@/components/slide-editor/types";
+import type { ChartElement, SlideElement } from "@/components/slide-editor/types";
 
 import {
   ELEMENT_INSERT_GROUPS,
@@ -133,6 +134,38 @@ export type PaletteItem = {
 };
 
 type UnknownRecord = Record<string, unknown>;
+
+function parseChartCsv(source: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"') {
+      if (quoted && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      row.push(cell.trim());
+      cell = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(cell.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+  row.push(cell.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
 
 export type TemplateBlock = {
   key: string;
@@ -261,6 +294,12 @@ export const chartTypeItems = [
   { id: "scatter", label: "Scatter Chart", icon: Circle },
   { id: "radar", label: "Radar Chart", icon: PieChart },
   { id: "polar_area", label: "Polar Area", icon: PieChart },
+] satisfies PaletteItem[];
+
+export const chartPresetItems = [
+  { id: "naloxone-survey", label: "Naloxone Survey", icon: BarChart3 },
+  { id: "import-chart-data", label: "Import CSV data", icon: FileUp },
+  { id: "chart-photo", label: "Add photo", icon: Image },
 ] satisfies PaletteItem[];
 
 export const infographicItems = [
@@ -1235,6 +1274,12 @@ function ActionsSidebar({
         />
         {!aiOnly && (
           <>
+            {insertActions.filter(item => item.id === "charts" || item.id === "infographics").map(item => (
+              <React.Fragment key={item.id}>
+                <div className="h-0 w-[30px] border-t border-[#EDEEEF]" />
+                <NavButton item={item} active={activeAction === item.id} onClick={() => onActionSelect(item.id)} />
+              </React.Fragment>
+            ))}
             <div className="h-0 w-[30px] border-t border-[#EDEEEF]" />
             <PrimaryActionButton
               active={activeAction === "blocks"}
@@ -1252,7 +1297,7 @@ function ActionsSidebar({
         <>
           <div className="h-0 w-[30px] shrink-0 border-t border-[#EDEEEF]" />
           <nav className="flex w-full flex-col items-center gap-5">
-            {insertActions.map((item) => (
+            {insertActions.filter(item => item.id !== "charts" && item.id !== "infographics").map((item) => (
               <React.Fragment key={item.id}>
                 <NavButton
                   item={item}
@@ -1340,7 +1385,10 @@ function ActionsPanel({
         <InsertPanel
           disabled={editingDisabled}
           title="Charts"
-          groups={[{ label: "Chart Type", items: chartTypeItems }]}
+          groups={[
+            { label: "Chart Type", items: chartTypeItems },
+            { label: "Data and media", items: chartPresetItems },
+          ]}
           onItemSelect={onChartItemSelect}
           previewKind="chart"
           theme={templateTheme}
@@ -1446,6 +1494,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
   const [hiddenTargetReferenceKey, setHiddenTargetReferenceKey] = useState<
     string | null
   >(null);
+  const chartImportInputRef = useRef<HTMLInputElement>(null);
   const targetReferenceKey = templateV2TargetKey(
     props.currentSlide,
     activeTemplateV2Target,
@@ -1566,6 +1615,14 @@ const PresentationActions = (props: PresentationActionsProps) => {
   };
 
   const handleChartItemSelect = (item: PaletteItem) => {
+    if (item.id === "import-chart-data") {
+      chartImportInputRef.current?.click();
+      return;
+    }
+    if (item.id === "chart-photo") {
+      insertEditorContent(createImageInsertContent("image", templateTheme), "Add photo");
+      return;
+    }
     const chartElements = createChartInsertElements(item.id, templateTheme);
     if (insertEditorElements(chartElements, item.label)) {
       trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
@@ -1575,6 +1632,41 @@ const PresentationActions = (props: PresentationActionsProps) => {
         item_label: item.label,
         slide_index: props.currentSlide,
       });
+    }
+  };
+
+  const handleChartDataImport = async (file?: File) => {
+    if (!file) return;
+    try {
+      const rows = parseChartCsv(await file.text());
+      if (rows.length < 2 || rows[0].length < 2) {
+        throw new Error("Add a header row, category column, and numeric values.");
+      }
+      const [header, ...dataRows] = rows;
+      const categories = dataRows.map((row, index) => row[0] || `Row ${index + 1}`);
+      const series = header.slice(1).map((name, columnIndex) => ({
+        name: name || `Series ${columnIndex + 1}`,
+        values: dataRows.map((row) => {
+          const value = Number(row[columnIndex + 1]);
+          return Number.isFinite(value) ? value : 0;
+        }),
+      }));
+      if (!series.length || !categories.length) throw new Error("No chart data found in this file.");
+      const chart = createChartInsertElements("bar", templateTheme).find(
+        (element): element is ChartElement => element.type === "chart",
+      );
+      if (!chart) throw new Error("Could not create a chart from this data.");
+      if (insertEditorElements([{ ...chart, categories, series, data: null }], file.name)) {
+        trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
+          presentation_id: props.presentationId,
+          category: "charts",
+          item_id: "import-chart-data",
+          item_label: file.name,
+          slide_index: props.currentSlide,
+        });
+      }
+    } catch (error) {
+      notify.error("Could not import chart data", error instanceof Error ? error.message : "Choose a valid CSV file.");
     }
   };
 
@@ -1716,6 +1808,17 @@ const PresentationActions = (props: PresentationActionsProps) => {
       data-inline-edit-ignore="true"
       className="flex h-full w-full overflow-hidden bg-white text-[clamp(12px,0.82vw,14px)]"
     >
+      <input
+        ref={chartImportInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        aria-label="Import chart data from CSV"
+        onChange={(event) => {
+          void handleChartDataImport(event.target.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
       {panelOpen ? (
         <ActionsPanel
           activeAction={activeAction}

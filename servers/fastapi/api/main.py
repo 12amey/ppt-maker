@@ -14,6 +14,8 @@ from api.v1.admin.router import API_V1_ADMIN_ROUTER
 from api.v1.mock.router import API_V1_MOCK_ROUTER
 from api.v1.ppt.router import API_V1_PPT_ROUTER
 from api.v1.webhook.router import API_V1_WEBHOOK_ROUTER
+from api.v1.media.router import router as API_V1_MEDIA_ROUTER
+from api.v1.media.quality import router as API_V1_QUALITY_ROUTER
 from api.v2.router import API_V2_ROUTER
 from utils.get_env import (
     get_app_data_directory_env,
@@ -71,6 +73,8 @@ app.include_router(API_V1_MOCK_ROUTER)
 app.include_router(API_V1_AUTH_ROUTER)
 app.include_router(API_V1_ADMIN_ROUTER)
 app.include_router(API_V1_ASYNC_TASKS_ROUTER)
+app.include_router(API_V1_MEDIA_ROUTER, prefix="/api/v1")
+app.include_router(API_V1_QUALITY_ROUTER, prefix="/api/v1")
 app.include_router(API_V2_ROUTER)
 
 # Mount app_data and static assets (direct FastAPI access; nginx also serves /static in Docker).

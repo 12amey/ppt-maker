@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import Image from "next/image";
 import { Loader2 } from "lucide-react";
 import SlideScale from "../../components/PresentationRender";
@@ -49,6 +49,7 @@ const SlideContent = ({
   isStreaming = false,
   fitToContainer = false,
 }: SlideContentProps) => {
+  const [slideMargin, setSlideMargin] = useState(48);
   const canEditSlide = !editingDisabled && isStreaming !== true;
 
   const isTemplateV2SlideContent = isTemplateV2Slide(slide);
@@ -105,6 +106,35 @@ const SlideContent = ({
               </span>
             </div>
           )}
+          {fitToContainer ? (
+            <>
+              <div className="pointer-events-none absolute inset-0 z-20" aria-hidden="true">
+                <div
+                  className="absolute border border-dashed border-violet-500/60"
+                  style={{
+                    inset: `${(slideMargin / 720) * 100}% ${(slideMargin / 1280) * 100}%`,
+                  }}
+                />
+              </div>
+              <label className="absolute right-3 top-3 z-30 flex items-center gap-2 rounded-md border border-[#E4E7EC] bg-white/95 px-2 py-1 text-xs text-[#475467] shadow-sm">
+                <span>Margin</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={240}
+                  step={4}
+                  value={slideMargin}
+                  aria-label="Slide margin in pixels"
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (Number.isFinite(value)) setSlideMargin(Math.min(240, Math.max(0, value)));
+                  }}
+                  className="w-12 rounded border border-[#D0D5DD] px-1 py-0.5 text-right text-xs text-[#101828] outline-none focus:border-violet-500"
+                />
+                <span>px</span>
+              </label>
+            </>
+          ) : null}
           <SlideScale
             slide={slide}
             presentationId={presentationId}

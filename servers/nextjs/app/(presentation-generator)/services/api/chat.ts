@@ -107,7 +107,19 @@ async function streamChatMessage(
   handlers: ChatStreamHandlers = {},
   options?: { signal?: AbortSignal }
 ): Promise<ChatMessageResponse> {
-  const response = await fetch(getApiUrl(endpoint), {
+  // Streaming chat responses can outlive the Next.js development proxy's
+  // upstream socket. Talk to the local FastAPI server directly in dev, just as
+  // the media studio does for long-running generation requests.
+  const isDirectLoopback =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
+  const fastApiUrl = process.env.NEXT_PUBLIC_FAST_API?.replace(/\/+$/, "");
+  const requestUrl =
+    isDirectLoopback && process.env.NODE_ENV === "development" && fastApiUrl
+      ? `${fastApiUrl}${endpoint}`
+      : getApiUrl(endpoint);
+  const response = await fetch(requestUrl, {
     method: "POST",
     headers: getHeader(),
     body: JSON.stringify(payload),

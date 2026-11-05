@@ -1,6 +1,30 @@
 import os
 from typing import Literal
 
+def _load_dotenv_files():
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(base_dir, ".env"),
+        os.path.join(base_dir, "..", "..", ".env"),
+    ]
+    for path in candidates:
+        abs_path = os.path.abspath(path)
+        if os.path.isfile(abs_path):
+            try:
+                with open(abs_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+            except Exception:
+                pass
+
+_load_dotenv_files()
 
 PresentationGenerationMode = Literal["both", "standard", "smart"]
 
@@ -41,8 +65,14 @@ def get_database_url_env():
     return os.getenv("DATABASE_URL")
 
 
-def get_app_data_directory_env():
-    return os.getenv("APP_DATA_DIRECTORY")
+def get_app_data_directory_env() -> str:
+    env_val = os.getenv("APP_DATA_DIRECTORY")
+    if env_val:
+        return env_val
+    if os.name == "nt":
+        base = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "presenton")
+    return "/tmp/presenton"
 
 
 def get_fastapi_public_base_url() -> str | None:
@@ -56,16 +86,25 @@ def get_fastapi_public_base_url() -> str | None:
     return v or None
 
 
-def get_temp_directory_env():
-    return os.getenv("TEMP_DIRECTORY")
+def get_temp_directory_env() -> str:
+    env_val = os.getenv("TEMP_DIRECTORY")
+    if env_val:
+        return env_val
+    if os.name == "nt":
+        base = os.getenv("TEMP") or os.getenv("TMP") or os.path.expanduser("~")
+        return os.path.join(base, "presenton")
+    return "/tmp/presenton"
 
 
-def get_user_config_path_env():
-    return os.getenv("USER_CONFIG_PATH")
+def get_user_config_path_env() -> str:
+    env_val = os.getenv("USER_CONFIG_PATH")
+    if env_val:
+        return env_val
+    return os.path.join(get_app_data_directory_env(), "userConfig.json")
 
 
 def get_disable_auth_env():
-    return os.getenv("DISABLE_AUTH")
+    return os.getenv("DISABLE_AUTH", "true")
 
 
 def get_presenton_oauth_issuer() -> str:
@@ -98,7 +137,13 @@ def get_anthropic_model_env():
 
 
 def get_ollama_url_env():
-    return os.getenv("OLLAMA_URL")
+    value = os.getenv("OLLAMA_URL")
+    if value and os.getenv("PRESENTON_LOCAL_SOURCE") == "true":
+        from urllib.parse import urlsplit, urlunsplit
+        parsed = urlsplit(value)
+        if parsed.hostname == "host.docker.internal":
+            return urlunsplit(parsed._replace(netloc=parsed.netloc.replace("host.docker.internal", "127.0.0.1")))
+    return value
 
 
 def get_custom_llm_url_env():
@@ -400,6 +445,16 @@ def get_comfyui_url_env():
 
 def get_comfyui_workflow_env():
     return os.getenv("COMFYUI_WORKFLOW")
+
+
+def get_comfyui_video_workflow_env():
+    """Optional custom ComfyUI video workflow JSON (AnimateDiff / CogVideoX)."""
+    return os.getenv("COMFYUI_VIDEO_WORKFLOW")
+
+
+def get_comfyui_managed_env() -> bool:
+    """True when Presenton manages the ComfyUI process itself (desktop app)."""
+    return _is_truthy(os.getenv("COMFYUI_MANAGED", "false"))
 
 
 # GPT Image 2 Quality

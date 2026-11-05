@@ -555,6 +555,7 @@ class PresentationChatMemoryLayer:
         *,
         query: str | None = None,
         max_chars: int | None = None,
+        extra_file_paths: list[str] | None = None,
     ) -> dict[str, Any]:
         presentation = await self._sql_session.get(
             PresentationModel, self._presentation_id
@@ -570,11 +571,14 @@ class PresentationChatMemoryLayer:
             max(max_chars or DEFAULT_SOURCE_DOCUMENT_CHARS, 1000),
             MAX_SOURCE_DOCUMENT_CHARS,
         )
-        source_paths = [
-            path
-            for path in (presentation.file_paths or [])
-            if isinstance(path, str) and path.strip()
-        ]
+        source_paths: list[str] = []
+        if extra_file_paths:
+            for path in extra_file_paths:
+                if isinstance(path, str) and path.strip() and path not in source_paths:
+                    source_paths.append(path)
+        for path in (presentation.file_paths or []):
+            if isinstance(path, str) and path.strip() and path not in source_paths:
+                source_paths.append(path)
 
         documents: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []

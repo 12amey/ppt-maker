@@ -20,7 +20,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useSelector } from "react-redux";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +45,6 @@ import {
   LOCAL_FONT_OPTIONS,
   type LocalFontOption,
 } from "@/components/slide-editor/text/local-fonts";
-import type { RootState } from "@/store/store";
 import { normalizeBackendAssetUrls, resolveBackendAssetUrl } from "@/utils/api";
 import { setupImageUrlConverter } from "@/utils/image-url-converter";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
@@ -67,10 +65,6 @@ import type {
   TemplateV2Layout,
   UploadedFont,
 } from "./types";
-import {
-  dismissTemplateV2ModelWarning,
-  showTemplateV2ModelWarningIfNeeded,
-} from "./utils/templateModelWarning";
 
 
 
@@ -1192,7 +1186,6 @@ function SaveTemplateModal({
 
 const CustomTemplatePage = () => {
   const router = useRouter();
-  const llmConfig = useSelector((state: RootState) => state.userConfig.llm_config);
   const [reviewSlideIndex, setReviewSlideIndex] = useState(0);
   const [templateModalMode, setTemplateModalMode] = useState<"create" | "save" | null>(null);
   const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false);
@@ -1292,12 +1285,6 @@ const CustomTemplatePage = () => {
     [],
   );
 
-  useEffect(() => {
-    showTemplateV2ModelWarningIfNeeded(llmConfig);
-    return () => {
-      dismissTemplateV2ModelWarning();
-    };
-  }, [llmConfig]);
 
   useEffect(() => {
     autoPreviewStartedRef.current = false;

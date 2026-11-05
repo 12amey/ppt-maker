@@ -90,6 +90,7 @@ class ChatTools:
         self._memory = memory
         self._mode = mode
         self._turn_user_message = ""
+        self._turn_attachments: list[Any] = []
         self._generated_assets: list[dict[str, Any]] = []
         self._tool_handlers: dict[str, ToolHandler] = {
             "addOutline": self._add_outline,
@@ -120,8 +121,13 @@ class ChatTools:
             "deleteComponent": self._delete_slide_component,
         }
 
-    def set_turn_context(self, user_message: str) -> None:
+    def set_turn_context(
+        self,
+        user_message: str,
+        attachments: list[Any] | None = None,
+    ) -> None:
         self._turn_user_message = user_message or ""
+        self._turn_attachments = attachments or []
         self._generated_assets = []
 
     def get_tool_definitions(self) -> list[Tool]:
@@ -737,9 +743,16 @@ class ChatTools:
 
     async def _read_source_documents(self, args: dict[str, Any]) -> dict[str, Any]:
         payload = ReadSourceDocumentsInput(**args)
+        extra_paths = [
+            getattr(att, "file_path", None)
+            or (att.get("file_path") if isinstance(att, dict) else None)
+            for att in (self._turn_attachments or [])
+        ]
+        valid_extra_paths = [p for p in extra_paths if isinstance(p, str) and p.strip()]
         return await self._memory.read_source_documents(
             query=payload.query,
             max_chars=payload.max_chars,
+            extra_file_paths=valid_extra_paths or None,
         )
 
 

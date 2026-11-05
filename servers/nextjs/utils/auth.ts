@@ -9,10 +9,14 @@ export function getDisableAuthValue(): string | undefined {
   }
 
   if (typeof process !== "undefined") {
-    return process.env.DISABLE_AUTH;
+    return (
+      process.env.NEXT_PUBLIC_DISABLE_AUTH ??
+      process.env.DISABLE_AUTH ??
+      "true"
+    );
   }
 
-  return undefined;
+  return "true";
 }
 
 export function isAuthDisabled(): boolean {

@@ -17,7 +17,7 @@ import { LegacyPresentationsTable } from "@/app/(presentation-generator)/(dashbo
 import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2 } from "lucide-react";
+import { Loader2, LayoutTemplate } from "lucide-react";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { usePathname, useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
@@ -248,7 +248,7 @@ function DashboardHeader() {
     <header className="sticky top-0 z-50 ml-7 mr-[9px] flex h-[105px] items-center justify-between border-b border-[#EDEEEF] bg-white px-1 max-lg:h-auto max-lg:min-h-[105px] max-lg:flex-col max-lg:items-start max-lg:gap-4 max-lg:py-5">
       <div className="flex w-[504.392px] max-w-full shrink-0 items-center gap-3.5 max-xl:w-auto">
         <h1 className="whitespace-nowrap font-syne text-[22px] font-medium leading-normal tracking-[-0.66px] text-[#101323]">
-          Dashboard
+          My presentations
         </h1>
       </div>
 
@@ -504,17 +504,17 @@ const DashboardPage: React.FC = () => {
         <h2 className="w-full font-syne text-[16px] font-medium leading-[normal] text-[#191919]">
           Actions
         </h2>
-        <div className="mt-[18px] grid w-full max-w-[625px] grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-[18px] grid w-full max-w-[940px] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <DashboardActionCard
-            href="/upload"
+            href="/custom-template"
             onClick={() =>
               trackEvent(MixpanelEvent.Dashboard_New_Presentation_Clicked, {
                 pathname,
                 source: "dashboard_actions_card",
               })
             }
-            title="Create new Presentation"
-            ariaLabel="Create new presentation"
+            title="Edit a PowerPoint"
+            ariaLabel="Edit an existing PowerPoint"
             media={
               <Image
                 src="/create_presentation_bg.png"
@@ -529,16 +529,37 @@ const DashboardPage: React.FC = () => {
           </DashboardActionCard>
 
           <DashboardActionCard
+            href="/templates"
+            onClick={() =>
+              trackEvent(MixpanelEvent.Navigation, {
+                from: pathname,
+                to: "/templates",
+                source: "dashboard_actions_card",
+              })
+            }
+            title="Templates"
+            ariaLabel="Browse ready-made templates"
+            mediaClassName="w-[96px]"
+            media={
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br from-[#F5F3FF] via-[#EDE9FE] to-[#DDD6FE]">
+                <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#7A5AF8] to-[#6938EF] text-white shadow-[0_4px_12px_rgba(122,90,248,0.25)] transition-transform duration-300 group-hover/action:scale-110">
+                  <LayoutTemplate className="h-5 w-5 text-white" />
+                </div>
+              </div>
+            }
+          />
+
+          <DashboardActionCard
             onClick={() => void createBlankPresentation()}
             disabled={isCreatingBlankPresentation}
             isLoading={isCreatingBlankPresentation}
             title={
-              isCreatingBlankPresentation ? "Creating..." : "Blank Presentation"
+              isCreatingBlankPresentation ? "Creating..." : "Blank page"
             }
             ariaLabel={
               isCreatingBlankPresentation
                 ? "Creating blank presentation"
-                : "Create blank presentation"
+                : "Start with a blank page"
             }
             mediaClassName="w-[90px]"
             media={
@@ -551,9 +572,18 @@ const DashboardPage: React.FC = () => {
       </section>
       <section className="relative z-10 mt-[46px] pl-3 pr-3 sm:pl-6 sm:pr-[9px]">
         <div className="mb-[14px] flex items-center justify-between gap-4">
-          <h2 className="font-syne text-[16px] font-medium leading-[normal] text-[#191919]">
-            Decks
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-syne text-[16px] font-medium leading-[normal] text-[#191919]">
+              Decks
+            </h2>
+            <Link
+              href="/templates"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#E9EAEB] bg-[#FAFAFC] px-3 py-1 font-syne text-xs font-medium text-[#535862] transition-colors hover:border-[#D5D7DA] hover:bg-[#F4F4F6] hover:text-[#181D27]"
+            >
+              <LayoutTemplate className="h-3.5 w-3.5 text-[#7A5AF8]" />
+              <span>Browse Templates</span>
+            </Link>
+          </div>
           <div className="flex items-center gap-[17px]">
             <div className="flex items-center rounded-[4px] border border-[#EDEEEF] p-1">
               <button

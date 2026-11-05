@@ -65,8 +65,12 @@ def _extract_pptx(archive: zipfile.ZipFile) -> str:
         ),
         key=_natural_key,
     )
-    slides = [" ".join(_text_nodes(_read_xml(archive, member))) for member in slide_members]
-    return "\n\n".join(slide for slide in slides if slide)
+    slide_texts = []
+    for index, member in enumerate(slide_members, start=1):
+        text = " ".join(_text_nodes(_read_xml(archive, member))).strip()
+        if text:
+            slide_texts.append(f"--- Slide {index} ---\n{text}")
+    return "\n\n".join(slide_texts)
 
 
 def _extract_shared_strings(archive: zipfile.ZipFile) -> list[str]:

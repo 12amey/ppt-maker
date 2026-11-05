@@ -599,7 +599,53 @@ function makeChartElement(chartType: ChartType): SlideElement {
   };
 }
 
+function createNaloxoneSurveyChart(): SlideElement {
+  const categories = [
+    "I am confident in my abilities to\nprescribe naloxone",
+    "Naloxone is a safe and effective\nmedication",
+    "Long-term, high-dose opioids can\nlead to potential harm",
+  ];
+  const colors = ["3769A9", "4D7FC4", "879FCC", "B5C3E0"];
+  const series = [
+    { name: "Strongly Disagree", values: [10, 5, 8] },
+    { name: "Neutral", values: [50, 10, 12] },
+    { name: "Agree", values: [30, 30, 45] },
+    { name: "Strongly Agree", values: [0, 50, 35] },
+  ];
+
+  return {
+    type: "chart",
+    position: { x: 105, y: 105 },
+    size: { width: 1070, height: 500 },
+    chart_type: "bar",
+    title: null,
+    title_color: "344054",
+    text_color: "344054",
+    color: colors[0],
+    axis_color: "667085",
+    grid_color: "E4E7EC",
+    data_labels: null,
+    x_axis: true,
+    y_axis: true,
+    x_axis_grid: false,
+    y_axis_grid: true,
+    legend: true,
+    legend_position: "bottom",
+    legend_color: "344054",
+    categories,
+    series,
+    colors,
+    data: chartData(categories, series[0].values, colors),
+    decorative: false,
+    name: "naloxone_survey_chart",
+  };
+}
+
 function createDefaultChartInsertElements(kind?: string): SlideElement[] {
+  if (kind?.toLowerCase() === "naloxone-survey") {
+    return [createNaloxoneSurveyChart()];
+  }
+
   const chartType = chartTypeFromPaletteId(kind);
   return chartType ? [makeChartElement(chartType)] : [];
 }
@@ -2747,6 +2793,9 @@ export function createChartInsertElements(
   kind?: string,
   theme: TemplateTheme = DEFAULT_TEMPLATE_THEME,
 ): SlideElement[] {
+  if (kind?.toLowerCase() === "naloxone-survey") {
+    return createDefaultChartInsertElements(kind);
+  }
   return themeElements(createDefaultChartInsertElements(kind), theme);
 }
 

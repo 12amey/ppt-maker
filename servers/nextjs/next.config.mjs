@@ -9,6 +9,15 @@ const nextConfig = {
   reactStrictMode: false,
   distDir: ".next-build",
   output: "standalone",
+  async rewrites() {
+    const backend = process.env.PRESENTON_LOCAL_BACKEND_URL;
+    if (!backend) return [];
+    return ["/api/v1/:path*", "/api/v2/:path*", "/app_data/:path*", "/static/:path*"].map(source => ({ source, destination: `${backend}${source}` }));
+  },
+  env: {
+    DISABLE_AUTH: process.env.DISABLE_AUTH ?? "true",
+    NEXT_PUBLIC_DISABLE_AUTH: process.env.NEXT_PUBLIC_DISABLE_AUTH ?? "true",
+  },
   turbopack: {
     root: nextjsRoot,
   },
@@ -17,6 +26,9 @@ const nextConfig = {
         allowedDevOrigins: [
           "127.0.0.1",
           "localhost",
+          "*.trycloudflare.com",
+          "*.lhr.life",
+          "*.loca.lt",
         ],
       }
     : {}),

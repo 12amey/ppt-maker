@@ -169,6 +169,33 @@ export class PresentationGenerationApi {
     }
   }
 
+  static async createPresentationFromTemplate(
+    templateId: string,
+  ): Promise<BlankPresentationResponse> {
+    const normalizedId = templateId.trim().replace(/^template-v2:/, "");
+    if (!normalizedId) throw new Error("A template ID is required");
+
+    const response = await fetch(
+      getApiUrl(
+        `/api/v1/ppt/presentation/create/from-template/${encodeURIComponent(normalizedId)}`,
+      ),
+      {
+        method: "POST",
+        headers: getHeader(),
+        cache: "no-cache",
+      },
+    );
+    const presentation = (await ApiResponseHandler.handleResponse(
+      response,
+      "Failed to open template",
+    )) as BlankPresentationResponse;
+
+    if (!presentation || typeof presentation.id !== "string") {
+      throw new Error("The template response did not include a presentation ID");
+    }
+    return presentation;
+  }
+
   static async updatePresentationContent(body: unknown) {
     try {
       const response = await fetch(

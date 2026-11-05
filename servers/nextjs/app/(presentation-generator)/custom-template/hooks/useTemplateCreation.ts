@@ -487,6 +487,7 @@ export const useTemplateCreation = () => {
                 headers: getHeader(),
                 body: JSON.stringify({
                     pptx_url: previewData.modified_pptx_url,
+                    import_mode: "preserve",
                     slide_image_urls: previewData.slide_image_urls,
                     fonts: previewData.fonts,
                     ...(metadata ? { name: metadata.name } : {}),

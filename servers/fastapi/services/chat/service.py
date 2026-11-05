@@ -34,7 +34,7 @@ from services.mem0_presentation_memory_service import MEM0_PRESENTATION_MEMORY_S
 from services.temp_file_service import TEMP_FILE_SERVICE
 from utils.llm_client_error_handler import handle_llm_client_exceptions
 from utils.llm_config import get_llm_config
-from utils.llm_provider import get_model
+from utils.llm_provider import get_model, is_ollama_selected
 from utils.llm_utils import (
     extract_text,
     get_generate_kwargs,
@@ -45,17 +45,23 @@ LOGGER = logging.getLogger(__name__)
 MAX_TOOL_ROUNDS = 40
 MAX_CHAT_ATTACHMENT_CONTEXT_CHARS = 6000
 MAX_CHAT_ATTACHMENT_FILE_CHARS = 3000
+MAX_OLLAMA_CHAT_HISTORY_MESSAGES = 6
+MAX_OLLAMA_CHAT_HISTORY_MESSAGE_CHARS = 1200
+MAX_OLLAMA_MEMORY_CONTEXT_CHARS = 1600
 DOCUMENT_CONTENT_INTENT_PATTERN = re.compile(
     r"\b(read|extract|parse|analy[sz]e|summari[sz]e|review|reference|cite|quote|"
     r"compare|content|from|data|numbers?|metrics?|table|chart|outline|"
-    r"presentation|create|generate|build|draft|write|convert)\b|"
+    r"presentation|create|generate|build|draft|write|convert|"
+    r"replace|replacing|swap|substitute|fill)\b|"
     r"\bbased\s+on\b|\baccording\s+to\b|"
+    r"\b(?:with|from|using)\s+(?:the\s+)?(?:attached|attch\w*|provided|this)\b|"
+    r"\b(?:attached|attch\w*)\s+(?:slide|silde|page|content|doc\w*|file|pdf|pptx)\b|"
     r"\buse\s+(?:the\s+)?(?:attached|provided|this)\s+"
     r"(?:document|pdf|file|attachment)\b",
     re.IGNORECASE,
 )
 DIRECT_FILE_PLACEMENT_PATTERN = re.compile(
-    r"\b(place|put|insert|attach|display|show|move|resize|position|replace|add)\b",
+    r"\b(place|put|move|resize|position)\b",
     re.IGNORECASE,
 )
 
@@ -98,12 +104,14 @@ class PresentationChatService:
         user_message: str,
         attachments: list[ChatAttachment] | None = None,
     ) -> ChatTurnResult:
-        self._tools.set_turn_context(user_message)
+        self._tools.set_turn_context(user_message, attachments=attachments or [])
         conversation_id, messages, persisted_user_message = await self._prepare_turn_context(
             user_message,
             attachments or [],
         )
-        response_text, tool_calls = await self._run_llm_with_tools(messages)
+        response_text, tool_calls = await self._run_llm_with_tools(
+            messages, user_message
+        )
         return await self._persist_turn(
             conversation_id=conversation_id,
             user_message=persisted_user_message,
@@ -116,7 +124,34 @@ class PresentationChatService:
         user_message: str,
         attachments: list[ChatAttachment] | None = None,
     ) -> AsyncGenerator[tuple[ChatStreamEventType, ChatStreamEventValue], None]:
-        self._tools.set_turn_context(user_message)
+        if self._is_standalone_greeting(user_message) and not attachments:
+            presentation = await self._sql_session.get(
+                PresentationModel, self._presentation_id
+            )
+            if not presentation:
+                raise HTTPException(status_code=404, detail="Presentation not found")
+            if presentation.generation_mode != self._presentation_type:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Presentation type does not match the stored generation mode.",
+                )
+
+            conversation_id = await self._conversation_store.ensure_conversation_id(
+                self._conversation_id
+            )
+            response_text = "Hi! What would you like to work on in this presentation?"
+            yield "chunk", response_text
+            yield "status", "Saving chat"
+            result = await self._persist_turn(
+                conversation_id=conversation_id,
+                user_message=self._persisted_user_message(user_message, []),
+                response_text=response_text,
+                tool_calls=[],
+            )
+            yield "complete", result
+            return
+
+        self._tools.set_turn_context(user_message, attachments=attachments or [])
         yield "status", "Reading deck context"
         conversation_id, messages, persisted_user_message = await self._prepare_turn_context(
             user_message,
@@ -125,7 +160,7 @@ class PresentationChatService:
 
         client = get_client(config=get_llm_config())
         model = get_model()
-        tools = build_chat_llm_tools(self._tools.get_tool_definitions())
+        tools = build_chat_llm_tools(self._get_tools_for_request(user_message))
 
         called_tools: list[str] = []
         last_tool_results: list[dict[str, Any]] = []
@@ -136,30 +171,47 @@ class PresentationChatService:
             round_content_chunks: list[str] = []
             thinking_chunks: list[str] = []
 
-            try:
-                async for event in stream_generate_events(
-                    client,
-                    **get_generate_kwargs(
-                        model=model,
-                        messages=messages,
-                        tools=tools,
-                        stream=True,
-                    ),
-                ):
-                    event_type = getattr(event, "type", None)
-                    if event_type == "content":
-                        chunk = getattr(event, "chunk", None)
-                        if chunk:
-                            round_content_chunks.append(chunk)
-                            yield "chunk", chunk
-                    elif event_type == "thinking":
-                        thinking_text = self._event_text(event)
-                        if thinking_text:
-                            thinking_chunks.append(thinking_text)
-                    elif event_type == "completion":
-                        completion_chunk = event
-            except Exception as exc:
-                raise handle_llm_client_exceptions(exc)
+            for context_retry in range(2):
+                try:
+                    async for event in stream_generate_events(
+                        client,
+                        **get_generate_kwargs(
+                            model=model,
+                            messages=messages,
+                            tools=tools,
+                            stream=True,
+                        ),
+                    ):
+                        event_type = getattr(event, "type", None)
+                        if event_type == "content":
+                            chunk = getattr(event, "chunk", None)
+                            if chunk:
+                                round_content_chunks.append(chunk)
+                                yield "chunk", chunk
+                        elif event_type == "thinking":
+                            thinking_text = self._event_text(event)
+                            if thinking_text:
+                                thinking_chunks.append(thinking_text)
+                        elif event_type == "completion":
+                            completion_chunk = event
+                    break
+                except Exception as exc:
+                    if (
+                        context_retry == 0
+                        and not round_content_chunks
+                        and is_ollama_selected()
+                        and self._is_context_length_error(exc)
+                    ):
+                        LOGGER.warning(
+                            "Ollama chat exceeded its context window; retrying without older history and memory"
+                        )
+                        yield "status", "Reducing conversation context and retrying"
+                        messages = self._compact_messages_for_context_retry(messages)
+                        tools = build_chat_llm_tools(
+                            self._get_tools_for_request(user_message)
+                        )
+                        continue
+                    raise handle_llm_client_exceptions(exc)
 
             thinking_summary = self._summarize_model_note(thinking_chunks)
             if thinking_summary:
@@ -272,6 +324,19 @@ class PresentationChatService:
         )
         yield "complete", result
 
+    @staticmethod
+    def _is_standalone_greeting(user_message: str) -> bool:
+        normalized = re.sub(r"[.!?,…]+$", "", (user_message or "").strip().lower())
+        return normalized in {
+            "hi",
+            "hello",
+            "hey",
+            "hiya",
+            "good morning",
+            "good afternoon",
+            "good evening",
+        }
+
     async def _prepare_turn_context(
         self,
         user_message: str,
@@ -304,6 +369,8 @@ class PresentationChatService:
             presentation_id=self._presentation_id,
             conversation_id=conversation_id,
         )
+        if is_ollama_selected():
+            history = self._trim_ollama_history(history)
         history_messages = self._convert_history_to_messages(history)
 
         normalized_user_message = self._strip_ui_context_prefix(user_message)
@@ -321,6 +388,13 @@ class PresentationChatService:
             conversation_id=conversation_id,
             query=memory_query,
         )
+        if is_ollama_selected():
+            presentation_memory = self._trim_context(
+                presentation_memory, MAX_OLLAMA_MEMORY_CONTEXT_CHARS
+            )
+            chat_memory = self._trim_context(
+                chat_memory, MAX_OLLAMA_MEMORY_CONTEXT_CHARS
+            )
         if attachment_memory:
             await MEM0_PRESENTATION_MEMORY_SERVICE.store_generation_context(
                 presentation_id=self._presentation_id,
@@ -350,6 +424,26 @@ class PresentationChatService:
             attachments or [],
         )
 
+    @staticmethod
+    def _trim_ollama_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
+        recent = history[-MAX_OLLAMA_CHAT_HISTORY_MESSAGES:]
+        trimmed: list[dict[str, str]] = []
+        for item in recent:
+            content = item.get("content", "")
+            if len(content) > MAX_OLLAMA_CHAT_HISTORY_MESSAGE_CHARS:
+                content = "[Earlier message content trimmed]\n" + content[
+                    -MAX_OLLAMA_CHAT_HISTORY_MESSAGE_CHARS:
+                ]
+            trimmed.append({**item, "content": content})
+        return trimmed
+
+    @staticmethod
+    def _trim_context(context: str, max_chars: int) -> str:
+        value = (context or "").strip()
+        if len(value) <= max_chars:
+            return value
+        return value[:max_chars].rstrip() + "\n[Additional context omitted]"
+
     async def _persist_turn(
         self,
         *,
@@ -373,26 +467,40 @@ class PresentationChatService:
             tool_calls=tool_calls,
         )
 
-    async def _run_llm_with_tools(self, messages: list[Message]) -> tuple[str, list[str]]:
+    async def _run_llm_with_tools(
+        self, messages: list[Message], user_message: str
+    ) -> tuple[str, list[str]]:
         client = get_client(config=get_llm_config())
         model = get_model()
-        tools = build_chat_llm_tools(self._tools.get_tool_definitions())
+        tools = build_chat_llm_tools(self._get_tools_for_request(user_message))
 
         called_tools: list[str] = []
         last_tool_results: list[dict[str, Any]] = []
 
         for _ in range(MAX_TOOL_ROUNDS):
-            try:
-                response = await asyncio.to_thread(
-                    client.generate,
-                    **get_generate_kwargs(
-                        model=model,
-                        messages=messages,
-                        tools=tools,
-                    ),
-                )
-            except Exception as exc:
-                raise handle_llm_client_exceptions(exc)
+            for context_retry in range(2):
+                try:
+                    response = await asyncio.to_thread(
+                        client.generate,
+                        **get_generate_kwargs(
+                            model=model,
+                            messages=messages,
+                            tools=tools,
+                        ),
+                    )
+                    break
+                except Exception as exc:
+                    if (
+                        context_retry == 0
+                        and is_ollama_selected()
+                        and self._is_context_length_error(exc)
+                    ):
+                        LOGGER.warning(
+                            "Ollama chat exceeded its context window; retrying without older history and memory"
+                        )
+                        messages = self._compact_messages_for_context_retry(messages)
+                        continue
+                    raise handle_llm_client_exceptions(exc)
 
             if not response.tool_calls:
                 response_text = extract_text(response.content) or (
@@ -429,6 +537,224 @@ class PresentationChatService:
             return final_response, called_tools
 
         return self._build_tool_limit_fallback(last_tool_results), called_tools
+
+    def _get_tools_for_request(self, user_message: str) -> list[Any]:
+        definitions = self._tools.get_tool_definitions()
+        if not is_ollama_selected():
+            return definitions
+
+        text = self._strip_ui_context_prefix(user_message or "").lower()
+        names = {tool.name for tool in definitions}
+        selected = {
+            "getTemplateSummary",
+            "searchSlide",
+            "getSlideAtIndex",
+            "readSourceDocuments",
+        } & names
+
+        if "outline" in text:
+            selected.update(
+                {"addOutline", "updateOutline", "deleteOutline"} & names
+            )
+        else:
+            asks_to_add = bool(
+                re.search(r"\b(add|create|insert|new|generate|build)\b", text)
+            )
+            asks_to_edit = bool(
+                re.search(
+                    r"\b(edit|change|modify|update|revise|rewrite|restyle|improve|replace|fix|resize|move|adjust|make)\b",
+                    text,
+                )
+            )
+            asks_to_delete = bool(re.search(r"\b(delete|remove|erase)\b", text))
+            asks_for_slide = "slide" in text or "page" in text
+            asks_for_component = bool(
+                re.search(r"\b(component|block|element|object|shape)\b", text)
+            )
+            asks_for_style = bool(
+                re.search(
+                    r"\b(color|colour|font|fill|stroke|border|margin|padding|alignment|align|position|size|opacity|rotate|layer|group|ungroup|duplicate|bold|italic|underline|style|format|professional|polished|modern|colorful|redesign|design)\b",
+                    text,
+                )
+            )
+            asks_for_chart_or_table = bool(
+                re.search(r"\b(chart|graph|table|infographic)\b", text)
+            )
+            asks_for_image = bool(
+                re.search(r"\b(image|photo|picture|icon|illustration)\b", text)
+            )
+
+            if asks_to_add:
+                selected.update(
+                    {"addElement", "addComponent", "createComponent"} & names
+                )
+                selected.update(
+                    {"getAvailableBlocks", "getAvailableInfographics"} & names
+                )
+                if asks_for_slide:
+                    selected.update(
+                        {
+                            "addNewSlide",
+                            "addNewSlideLayout",
+                            "getAvailableLayouts",
+                            "getContentSchemaFromLayoutId",
+                        }
+                        & names
+                    )
+                if "infographic" in text:
+                    selected.add("addInfographic")
+                if asks_for_image:
+                    selected.add("generateAssets")
+
+            if asks_to_edit:
+                selected.update({"updateSlide", "saveSlide"} & names)
+                if (
+                    asks_for_component
+                    or asks_for_style
+                    or asks_for_image
+                    or asks_for_chart_or_table
+                    or "selected" in text
+                ):
+                    selected.add("updateComponent")
+                if asks_for_style or "selected" in text:
+                    selected.add("updateElement")
+                if asks_for_image:
+                    selected.add("generateAssets")
+
+            if asks_to_delete:
+                if asks_for_slide:
+                    selected.add("deleteSlide")
+                selected.update({"deleteElement", "deleteComponent"} & names)
+
+            if asks_for_chart_or_table:
+                selected.add("getAvailableBlocks")
+                if not asks_to_delete:
+                    selected.update({"addComponent", "createComponent"} & names)
+                if "infographic" in text:
+                    selected.update({"getAvailableInfographics", "addInfographic"} & names)
+
+        filtered = [tool for tool in definitions if tool.name in selected]
+        LOGGER.info(
+            "Ollama chat tool context narrowed from %d to %d tools",
+            len(definitions),
+            len(filtered),
+        )
+        return filtered
+
+    @staticmethod
+    def _is_context_length_error(error: Exception) -> bool:
+        message = str(error).lower()
+        return "context size" in message or "context length" in message
+
+    def _compact_messages_for_context_retry(
+        self, messages: list[Message]
+    ) -> list[Message]:
+        latest_user_index = next(
+            (
+                index
+                for index in range(len(messages) - 1, 0, -1)
+                if isinstance(messages[index], UserMessage)
+            ),
+            len(messages) - 1,
+        )
+        recent_messages = messages[latest_user_index:]
+        compacted_recent: list[Message] = []
+        for message in recent_messages:
+            if isinstance(message, ToolResponseMessage):
+                message_text = extract_text(message.content) or ""
+                compacted_recent.append(
+                    ToolResponseMessage(
+                        id=message.id,
+                        content=[
+                            TextContentPart(
+                                text=self._compact_tool_response_text(message_text)
+                            )
+                        ],
+                    )
+                )
+            else:
+                compacted_recent.append(message)
+
+        compacted = [
+            SystemMessage(
+                content=build_system_prompt(
+                    presentation_memory_context="",
+                    chat_memory_context="",
+                    presentation_type=self._presentation_type,
+                )
+            ),
+            *compacted_recent,
+        ]
+        return compacted
+
+    @classmethod
+    def _compact_tool_response_text(cls, value: str) -> str:
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return value[:3000] + (" [truncated]" if len(value) > 3000 else "")
+
+        compacted = cls._compact_tool_response_value(parsed)
+        serialized = json.dumps(compacted, ensure_ascii=False)
+        if len(serialized) > 3000:
+            serialized = json.dumps(
+                cls._compact_tool_response_value(
+                    parsed, max_string_chars=120, max_list_items=2, max_depth=3
+                ),
+                ensure_ascii=False,
+            )
+        if len(serialized) > 3000:
+            return json.dumps(
+                {
+                    "note": "Tool result shortened to fit the local model context.",
+                    "preview": serialized[:2400],
+                },
+                ensure_ascii=False,
+            )
+        return serialized
+
+    @classmethod
+    def _compact_tool_response_value(
+        cls,
+        value: Any,
+        *,
+        max_string_chars: int = 360,
+        max_list_items: int = 5,
+        max_depth: int = 5,
+        depth: int = 0,
+    ) -> Any:
+        if isinstance(value, str):
+            if len(value) <= max_string_chars:
+                return value
+            return value[:max_string_chars].rstrip() + "…[truncated]"
+        if depth >= max_depth:
+            return "[nested tool data omitted]"
+        if isinstance(value, list):
+            items = [
+                cls._compact_tool_response_value(
+                    item,
+                    max_string_chars=max_string_chars,
+                    max_list_items=max_list_items,
+                    max_depth=max_depth,
+                    depth=depth + 1,
+                )
+                for item in value[:max_list_items]
+            ]
+            if len(value) > max_list_items:
+                items.append(f"[{len(value) - max_list_items} more items omitted]")
+            return items
+        if isinstance(value, dict):
+            return {
+                str(key): cls._compact_tool_response_value(
+                    item,
+                    max_string_chars=max_string_chars,
+                    max_list_items=max_list_items,
+                    max_depth=max_depth,
+                    depth=depth + 1,
+                )
+                for key, item in value.items()
+            }
+        return value
 
     async def _try_final_response_without_tools(
         self,

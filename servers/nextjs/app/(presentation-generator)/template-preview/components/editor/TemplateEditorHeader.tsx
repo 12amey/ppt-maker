@@ -44,6 +44,7 @@ type TemplateEditorHeaderProps = {
   canDelete: boolean;
   hasUnsavedChanges: boolean;
   isSaving: boolean;
+  isOpeningTemplate?: boolean;
   templateName: string;
   onBack: () => void;
   onCopy: () => void;
@@ -54,6 +55,7 @@ type TemplateEditorHeaderProps = {
   onRedo: () => void;
   onSave: () => void;
   onUndo: () => void;
+  onUseTemplate: () => void;
 };
 
 export function TemplateEditorHeader({
@@ -64,6 +66,7 @@ export function TemplateEditorHeader({
   canDelete,
   hasUnsavedChanges,
   isSaving,
+  isOpeningTemplate = false,
   templateName,
   onBack,
   onCopy,
@@ -74,6 +77,7 @@ export function TemplateEditorHeader({
   onRedo,
   onSave,
   onUndo,
+  onUseTemplate,
 }: TemplateEditorHeaderProps) {
   const skipNameCommitRef = useRef(false);
 
@@ -185,6 +189,10 @@ export function TemplateEditorHeader({
             <div className="hidden h-[16.5px] w-px bg-[#EDEEEF] md:block" />
           </>
         ) : null}
+        <GradientActionButton onClick={onUseTemplate} disabled={isSaving || isOpeningTemplate || hasUnsavedChanges} title={hasUnsavedChanges ? "Save changes before using this template" : "Open this template in the presentation editor"}>
+          {isOpeningTemplate ? "Opening" : "Open in editor"}
+          {isOpeningTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+        </GradientActionButton>
         {canEdit ? (
           <GradientActionButton
             onClick={onSave}

@@ -43,6 +43,18 @@ function hasModelInstalled() {
 }
 
 function installModel() {
+  const localWhl = path.join(fastapiDir, `${requiredModel}-3.8.0-py3-none-any.whl`);
+  if (fs.existsSync(localWhl)) {
+    return runUv(["pip", "install", localWhl], `spaCy model install (${localWhl})`);
+  }
+  const directUrl = `https://github.com/explosion/spacy-models/releases/download/${requiredModel}-3.8.0/${requiredModel}-3.8.0-py3-none-any.whl`;
+  const uvPip = runUv(
+    ["pip", "install", directUrl],
+    `spaCy model install (${requiredModel})`,
+  );
+  if (uvPip) {
+    return true;
+  }
   return runUvPython(
     ["-m", "spacy", "download", requiredModel],
     `spaCy model install (${requiredModel})`,

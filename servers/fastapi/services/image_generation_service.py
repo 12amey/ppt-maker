@@ -969,6 +969,8 @@ class ImageGenerationService:
                 # Check for completion
                 if "status" in execution_data:
                     status = execution_data["status"]
+                    if status.get("status_str") == "error":
+                        raise RuntimeError(f"ComfyUI workflow error: {status.get('messages', [])}")
                     if status.get("completed", False):
                         print("ComfyUI workflow completed successfully")
                         return status_data

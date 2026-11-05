@@ -69,6 +69,21 @@ def test_chat_attachment_intent_parses_document_content_requests():
     assert PresentationChatService._should_parse_attachments("", [attachment])
 
 
+def test_chat_attachment_intent_parses_replace_slide_with_attachment():
+    attachment = ChatAttachment(
+        name="2-2494-Strategic-Lighthouse-Analogy-PGO.pptx",
+        file_path="/tmp/presenton/sample.pptx",
+    )
+    assert PresentationChatService._should_parse_attachments(
+        "replace this silde with attches slide no 1",
+        [attachment],
+    )
+    assert PresentationChatService._should_parse_attachments(
+        "replace slide 7 with attached slide 1",
+        [attachment],
+    )
+
+
 def test_chat_attachment_intent_skips_direct_file_placement_requests():
     attachment = ChatAttachment(name="brief.pdf", file_path="/tmp/presenton/brief.pdf")
 
@@ -176,6 +191,38 @@ def test_chat_memory_reads_presentation_source_documents():
     assert result["source"] == "uploaded_files"
     assert result["documents"][0]["name"] == "source.txt"
     assert "Detector efficiency improved" in result["documents"][0]["content"]
+
+
+def test_chat_memory_reads_extra_turn_attachments():
+    presentation_id = uuid.uuid4()
+    temp_dir = TEMP_FILE_SERVICE.create_temp_dir(str(uuid.uuid4()))
+    source_path = TEMP_FILE_SERVICE.create_temp_file(
+        "attached_doc.txt",
+        "Strategic lighthouse analogy content for slide 1.",
+        temp_dir,
+    )
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V1_STANDARD,
+        content="deck",
+        n_slides=1,
+        language="English",
+        title="Deck",
+        file_paths=[],
+    )
+    memory = PresentationChatMemoryLayer(
+        _FakeSession(presentation),
+        presentation_id,
+    )
+
+    result = asyncio.run(
+        memory.read_source_documents(extra_file_paths=[source_path])
+    )
+
+    assert result["found"] is True
+    assert result["source"] == "uploaded_files"
+    assert result["documents"][0]["name"] == "attached_doc.txt"
+    assert "Strategic lighthouse analogy" in result["documents"][0]["content"]
 
 
 class _FakeSession:

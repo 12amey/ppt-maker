@@ -186,6 +186,12 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const shouldPreloadTemplateV2Presentation =
     searchParams.get("editor") === "v2" || searchParams.get("type") === "smart";
 
+  useEffect(() => {
+    if (searchParams.get("assistant") === "open") {
+      setIsRightPanelOpen(true);
+    }
+  }, [searchParams]);
+
   const { presentationData, isStreaming, chatHtmlSelection } = useSelector(
     (state: RootState) => state.presentationGeneration
   );

@@ -874,6 +874,7 @@ function findDirectoriesNamed(root, name) {
 const config = {
   appId: APP_ID,
   productName: "Presenton",
+  npmRebuild: false,
   asar: true,
   asarUnpack: [
     "resources/**",
@@ -946,7 +947,9 @@ const config = {
     afterInstall: "build/after-install.tpl",
   },
   win: {
-    target: ["nsis", "appx"],
+    target: process.env.PRESENTON_WIN_TARGET
+      ? process.env.PRESENTON_WIN_TARGET.split(",").map((t) => t.trim())
+      : ["nsis", "dir"],
     icon: "build/icon.ico",
     artifactName: "Presenton-${version}.${ext}",
     executableName: "Presenton",

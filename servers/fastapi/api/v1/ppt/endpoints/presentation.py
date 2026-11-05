@@ -1788,6 +1788,93 @@ async def create_blank_presentation(
     )
 
 
+@PRESENTATION_ROUTER.post(
+    "/create/from-template/{template_id}",
+    response_model=PresentationWithSlides,
+    status_code=201,
+)
+async def create_presentation_from_template(
+    template_id: str,
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    """Open a saved template directly as an editable presentation."""
+    template = await sql_session.get(TemplateV2, template_id)
+    if not template or not isinstance(template.layouts, dict):
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    layouts_value = template.layouts.get("layouts")
+    if isinstance(layouts_value, dict):
+        layouts_value = layouts_value.get("layouts")
+    if not isinstance(layouts_value, list) or not layouts_value:
+        raise HTTPException(
+            status_code=400,
+            detail="This template does not contain any saved slide layouts",
+        )
+    if len(layouts_value) > MAX_NUMBER_OF_SLIDES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A presentation cannot contain more than {MAX_NUMBER_OF_SLIDES} slides",
+        )
+
+    presentation_id = uuid.uuid4()
+    layout_payload = copy.deepcopy(template.layouts)
+    layout_payload["name"] = template.id
+    layout_payload["template_id"] = template.id
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V2_STANDARD,
+        content="",
+        n_slides=len(layouts_value),
+        language="English",
+        title=template.name or "Untitled Presentation",
+        layout=layout_payload,
+        theme=copy.deepcopy(template.theme),
+        fonts=(
+            copy.deepcopy(template.theme.get("fonts"))
+            if isinstance(template.theme, dict)
+            else None
+        ),
+        include_title_slide=False,
+    )
+    slides = []
+    for index, source_layout in enumerate(layouts_value):
+        if not isinstance(source_layout, dict):
+            continue
+        layout_id = str(source_layout.get("id") or f"template-slide-{index + 1}")
+        slides.append(
+            SlideModel(
+                presentation=presentation_id,
+                layout_group=template.id,
+                layout=layout_id,
+                index=index,
+                content={},
+                speaker_note="",
+                ui=copy.deepcopy(source_layout),
+            )
+        )
+    if not slides:
+        raise HTTPException(
+            status_code=400,
+            detail="This template does not contain any usable slide layouts",
+        )
+    presentation.n_slides = len(slides)
+    sql_session.add(presentation)
+    sql_session.add_all(slides)
+    try:
+        await sql_session.commit()
+    except Exception:
+        await sql_session.rollback()
+        raise
+    await sql_session.refresh(presentation)
+    for slide in slides:
+        await sql_session.refresh(slide)
+
+    return PresentationWithSlides(
+        **_presentation_response_data(presentation),
+        slides=slides,
+    )
+
+
 @PRESENTATION_ROUTER.post("/prepare", response_model=PresentationPrepareResponse)
 async def prepare_presentation(
     presentation_id: Annotated[uuid.UUID, Body()],

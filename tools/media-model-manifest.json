@@ -1,0 +1,14 @@
+[
+  {
+    "repository": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+    "file": "C:\\Users\\deshm\\Desktop\\ppt editor\\tools\\ComfyUI\\models\\checkpoints\\v1-5-pruned-emaonly.safetensors",
+    "sha256": "6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa",
+    "bytes": 4265146304
+  },
+  {
+    "repository": "guoyww/animatediff",
+    "file": "C:\\Users\\deshm\\Desktop\\ppt editor\\tools\\ComfyUI\\models\\animatediff_models\\mm_sd_v15_v2.ckpt",
+    "sha256": "69ed0f5fef82b110aca51bcab73b21104242bc65d6ab4b8b2a2a94d31cad1bf0",
+    "bytes": 1817888431
+  }
+]

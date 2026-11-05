@@ -3,8 +3,12 @@ import Home from "@/components/Home";
 import { ConfigurationInitializer } from "./ConfigurationInitializer";
 import { isAuthDisabled } from "@/utils/auth";
 import { getServerAuthStatus } from "@/utils/serverAuth";
+import { redirect } from "next/navigation";
 
 const page = async () => {
+    if (process.env.PRESENTON_LOCAL_SOURCE === "true" && isAuthDisabled()) {
+        redirect("/ppt-maker");
+    }
     if (isAuthDisabled()) {
         return (
             <ConfigurationInitializer>

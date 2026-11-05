@@ -55,9 +55,13 @@ def get_pool_kwargs() -> dict:
 
 
 def get_database_url_and_connect_args() -> tuple[str, dict]:
-    database_url = get_database_url_env() or "sqlite:///" + os.path.join(
-        get_app_data_directory_env() or "/tmp/presenton", "fastapi.db"
-    )
+    db_env = get_database_url_env()
+    if db_env:
+        database_url = db_env
+    else:
+        app_data = get_app_data_directory_env()
+        clean_path = os.path.abspath(os.path.join(app_data, "fastapi.db")).replace("\\", "/")
+        database_url = f"sqlite:///{clean_path}"
 
     _ensure_sqlite_parent_dir(database_url)
 

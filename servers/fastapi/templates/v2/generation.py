@@ -23,6 +23,7 @@ from llmai.shared import (
 )
 from pydantic import BaseModel, ValidationError
 
+from enums.llm_provider import LLMProvider
 from templates.v2 import certified_generation as _certified_generation
 from templates.v2.models.layouts import (
     Component,
@@ -41,13 +42,22 @@ from templates.v2.models.elements import ImageFit
 from templates.v2.tools import PREVIEW_SLIDE_TOOL_NAME, PreviewSlideTool
 from utils.asset_directory_utils import resolve_image_path_to_filesystem
 from utils.llm_config import get_llm_config
-from utils.llm_provider import get_model
+from utils.llm_provider import get_llm_provider, get_model
 
 DEFAULT_VALIDATION_RETRIES = 5
 MAX_PARALLEL_SLIDE_LAYOUTS = 10
 MAX_PREVIEW_SLIDE_CALLS = 2
 CONTENT_IMAGE_PLACEHOLDER_URL = "/static/images/replaceable_template_image.png"
 CONTENT_ICON_PLACEHOLDER_URL = "/static/icons/placeholder.svg"
+
+
+class PromptedTextEdit(BaseModel):
+    name: str
+    text: str
+
+
+class PromptedTextEditResponse(BaseModel):
+    edits: list[PromptedTextEdit]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,8 +96,15 @@ _CONTENT_VALUE_KEYS_BY_ELEMENT_TYPE = {
 
 
 GENERATE_PROMPTED_TEMPLATE_LAYOUT_SYSTEM_PROMPT = """
-Create exactly one new editable Template V2 slide layout for the user's request.
+Create exactly one editable Template V2 slide layout for the user's request.
 The result is an in-memory draft; do not modify the template or a presentation.
+
+When the user request includes "Edit the selected existing template slide" and
+provides Current slide JSON, treat that JSON as the source slide. Return a
+complete edited version of that slide, applying the requested changes to any of
+its components while preserving content and design the user did not ask to
+change. Do not create an unrelated slide in edit mode. For other requests,
+create a new layout as usual.
 
 Use the supplied reference layouts and reusable components to match the template's
 visual language: typography, colors, spacing, geometry, decorative assets, and
@@ -98,7 +115,8 @@ Rules:
 - Create a unique structural snake_case layout id and a 10-300 character description.
 - Compose within a 1280x720 canvas. Component positions are canvas-relative and
   element positions are local to their component.
-- Prefer adapting supplied layouts and reusable components over inventing structure.
+- Prefer adapting the supplied current slide, reference layouts, and reusable
+  components over inventing structure.
 - Reuse decorative asset URLs only when they occur in the supplied template JSON.
   Never invent an asset URL.
 - Mark replaceable semantic text, lists, images, icons, charts, tables, and metrics
@@ -108,7 +126,9 @@ Rules:
 - Include realistic neutral preview content, valid schema limits, unique component
   ids, and enough room for the maximum declared content.
 - Use type=vector for scratch-built shapes, lines, dividers, connectors, and arrows.
-- Do not copy topic-specific wording from a reference layout.
+- Do not copy topic-specific wording from a reference layout when creating a new
+  layout. In edit mode, preserve the selected slide's wording unless asked to
+  change it.
 """.strip()
 
 PROMPTED_LAYOUT_MAX_REFERENCE_LAYOUTS = 4
@@ -635,10 +655,21 @@ def generate_prompted_slide_layout(
     template_name: str | None = None,
     template_description: str | None = None,
     fonts: dict[str, str] | None = None,
+    source_layout: SlideLayout | None = None,
 ) -> SlideLayout:
     normalized_prompt = prompt.strip()
     if not normalized_prompt:
         raise ValueError("Prompt is required")
+    if (
+        get_llm_provider() == LLMProvider.OLLAMA
+        and get_model().lower().startswith("qwen3")
+    ):
+        # Qwen3 spends a large part of its output budget on reasoning unless
+        # explicitly told to return the structured result directly.
+        normalized_prompt = f"{normalized_prompt}\n/no_think"
+
+    if source_layout is not None:
+        return _generate_prompted_text_edit(normalized_prompt, source_layout)
 
     context = _prompted_layout_context(
         prompt=normalized_prompt,
@@ -647,8 +678,11 @@ def generate_prompted_slide_layout(
         template_name=template_name,
         template_description=template_description,
         fonts=fonts,
+        source_layout=source_layout,
     )
     existing_layout_ids = {layout.id for layout in template_layouts.layouts}
+    if source_layout is not None:
+        existing_layout_ids.discard(source_layout.id)
 
     def validate_generated_layout(layout: SlideLayout) -> None:
         if not PROMPTED_LAYOUT_ID_PATTERN.fullmatch(layout.id):
@@ -688,9 +722,114 @@ def generate_prompted_slide_layout(
         response_name="PromptedTemplateLayoutResponse",
         validation_retries=DEFAULT_VALIDATION_RETRIES,
         extra_validator=validate_generated_layout,
-        max_tokens=16_000,
+        # Ollama models commonly run with a 16k context window. Reserve room
+        # for the prompt and schema so the requested output budget does not
+        # make otherwise valid local requests exceed that window.
+        max_tokens=4_096 if get_llm_provider() == LLMProvider.OLLAMA else 16_000,
     )
     return _replace_content_image_urls(SlideLayout.model_validate(generated))
+
+
+def _generate_prompted_text_edit(
+    prompt: str,
+    source_layout: SlideLayout,
+) -> SlideLayout:
+    source_data = source_layout.model_dump(mode="json", exclude_none=True)
+    editable_fields: list[dict[str, Any]] = []
+
+    def collect_elements(value: Any) -> None:
+        if isinstance(value, dict):
+            if (
+                value.get("type") == "text"
+                and value.get("decorative") is False
+                and isinstance(value.get("name"), str)
+            ):
+                editable_fields.append(
+                    {
+                        "name": value["name"],
+                        "text": "".join(
+                            str(run.get("text", ""))
+                            for run in value.get("runs", [])
+                            if isinstance(run, dict)
+                        ),
+                        "max_length": value.get("max_length"),
+                    }
+                )
+            for child in value.values():
+                collect_elements(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect_elements(child)
+
+    collect_elements(source_data.get("components", []))
+    if not editable_fields:
+        raise ValueError("This slide has no editable text fields for the local model")
+
+    client = get_client(config=get_llm_config())
+    generated = _generate_with_validation_retries(
+        client=client,
+        model=get_model(),
+        messages=[
+            SystemMessage(
+                content=(
+                    "Edit only the requested editable text fields in the supplied slide. "
+                    "Return JSON matching the schema with an edits array. Each edit must "
+                    "use an existing field name and provide its complete replacement text. "
+                    "Keep every replacement within that field's max_length. Do not invent "
+                    "field names or return unchanged fields."
+                )
+            ),
+            UserMessage(
+                content=(
+                    f"User request:\n{prompt}\n\n"
+                    "Editable text fields:\n"
+                    f"{json.dumps(editable_fields, ensure_ascii=False)}"
+                )
+            ),
+        ],
+        label="prompted template slide text edit",
+        output_model=PromptedTextEditResponse,
+        response_name="PromptedTemplateSlideTextEditResponse",
+        validation_retries=2,
+        max_tokens=1_024 if get_llm_provider() == LLMProvider.OLLAMA else 4_096,
+    )
+    edits = PromptedTextEditResponse.model_validate(generated).edits
+    edits_by_name = {edit.name: edit.text for edit in edits}
+    allowed_names = {item["name"] for item in editable_fields}
+    unknown_names = set(edits_by_name).difference(allowed_names)
+    if unknown_names:
+        raise ValueError("The model returned an unknown editable text field")
+
+    def apply_edits(value: Any) -> None:
+        if isinstance(value, dict):
+            name = value.get("name")
+            if (
+                value.get("type") == "text"
+                and value.get("decorative") is False
+                and name in edits_by_name
+            ):
+                text = edits_by_name[name]
+                max_length = value.get("max_length")
+                if isinstance(max_length, int) and len(text) > max_length:
+                    clipped = text[:max_length]
+                    text = clipped.rsplit(" ", 1)[0] if " " in clipped else clipped
+                font = next(
+                    (
+                        run.get("font")
+                        for run in value.get("runs", [])
+                        if isinstance(run, dict) and run.get("font")
+                    ),
+                    None,
+                )
+                value["runs"] = [{"text": text, **({"font": font} if font else {})}]
+            for child in value.values():
+                apply_edits(child)
+        elif isinstance(value, list):
+            for child in value:
+                apply_edits(child)
+
+    apply_edits(source_data.get("components", []))
+    return _replace_content_image_urls(SlideLayout.model_validate(source_data))
 
 
 def _prompted_layout_context(
@@ -701,6 +840,7 @@ def _prompted_layout_context(
     template_name: str | None,
     template_description: str | None,
     fonts: dict[str, str] | None,
+    source_layout: SlideLayout | None = None,
 ) -> dict[str, Any]:
     prompt_terms = _search_terms(prompt)
     ranked_layouts = sorted(
@@ -718,13 +858,17 @@ def _prompted_layout_context(
             item[0],
         ),
     )
+    is_edit_request = source_layout is not None or "Edit the selected existing template slide" in prompt
+    reference_limit = 1 if is_edit_request else PROMPTED_LAYOUT_MAX_REFERENCE_LAYOUTS
     selected_layouts = [
         layout.model_dump(mode="json", exclude_none=True)
-        for _, layout in ranked_layouts[:PROMPTED_LAYOUT_MAX_REFERENCE_LAYOUTS]
+        for _, layout in ranked_layouts[:reference_limit]
     ]
+    if source_layout is not None:
+        selected_layouts = [source_layout.model_dump(mode="json", exclude_none=True)]
 
     ranked_components: list[tuple[int, int, MergedComponent]] = []
-    if merged_components is not None:
+    if merged_components is not None and not is_edit_request:
         ranked_components = sorted(
             (
                 (

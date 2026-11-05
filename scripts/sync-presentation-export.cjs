@@ -257,13 +257,17 @@ function installRuntime(version, archivePath) {
   // Removing a mount point fails with EBUSY; clearing its contents is portable.
   clearDirectoryContents(targetRoot);
   fs.copyFileSync(sourceRunner, targetRunner);
+  const relativeArchive = path.relative(targetRoot, archivePath).replace(/\\/g, "/");
+  const relativeCache = path
+    .relative(targetRoot, path.join(cacheDir, "npm"))
+    .replace(/\\/g, "/");
   fs.writeFileSync(
     path.join(targetRoot, "package.json"),
     `${JSON.stringify(
       {
         private: true,
         type: "module",
-        dependencies: { "@presenton/export-core": `file:${archivePath}` },
+        dependencies: { "@presenton/export-core": `file:${relativeArchive}` },
       },
       null,
       2,
@@ -280,9 +284,9 @@ function installRuntime(version, archivePath) {
       "--no-fund",
       "--no-audit",
       "--cache",
-      path.join(cacheDir, "npm"),
+      relativeCache,
     ],
-    { cwd: targetRoot, stdio: "inherit" },
+    { cwd: targetRoot, stdio: "inherit", shell: process.platform === "win32" },
   );
   fs.writeFileSync(
     versionManifestPath,

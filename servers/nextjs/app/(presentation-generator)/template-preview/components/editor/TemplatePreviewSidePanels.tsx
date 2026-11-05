@@ -80,6 +80,7 @@ const templateNavItems: Array<{
   label: string;
   Icon: RailIcon;
 }> = [
+  { id: "ai", label: "AI", Icon: Sparkles },
   { id: "schema", label: "Schema", Icon: Edit3 },
   { id: "layouts", label: "Layouts", Icon: List },
 ];
@@ -257,10 +258,16 @@ export function AiPanel({
   prompt,
   onPromptChange,
   onSubmit,
+  mode,
+  onModeChange,
+  isGenerating = false,
 }: {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   onSubmit: () => void;
+  mode: "edit" | "new";
+  onModeChange: (mode: "edit" | "new") => void;
+  isGenerating?: boolean;
 }) {
   const quickPrompts = ["Make it shorter", "Make it more engaging"];
 
@@ -280,6 +287,28 @@ export function AiPanel({
             <br />
             for your deck today?
           </p>
+        </div>
+
+        <div className="mb-3 grid grid-cols-2 gap-2" aria-label="AI action">
+          {([
+            ["edit", "Edit this slide"],
+            ["new", "Add a slide"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={mode === value}
+              onClick={() => onModeChange(value)}
+              className={cn(
+                "rounded-md border px-2 py-2 text-xs transition-colors",
+                mode === value
+                  ? "border-violet-300 bg-violet-50 font-medium text-violet-700"
+                  : "border-[#EDEEEF] bg-white text-[#667085] hover:bg-[#F8F8FA]",
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <form className="mt-auto" onSubmit={submit}>
@@ -317,10 +346,14 @@ export function AiPanel({
               <button
                 type="submit"
                 className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EFEFF2] text-[#191919] disabled:text-[#9A9A9A]"
-                disabled={!prompt.trim()}
+                disabled={!prompt.trim() || isGenerating}
                 title="Send"
               >
-                <ArrowUp className="h-4 w-4" />
+                {isGenerating ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
               </button>
             </div>
           </div>

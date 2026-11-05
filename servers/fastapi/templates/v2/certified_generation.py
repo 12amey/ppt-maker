@@ -23,6 +23,7 @@ from llmai.shared import (
 )
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from enums.llm_provider import LLMProvider
 from templates.v2.models.layouts import (
     Component,
     LayoutGenerationOptions,
@@ -55,6 +56,7 @@ from templates.v2.models.elements import Image as SlideImageElement
 from templates.v2.models.elements import ImageFit, InfographicData, InfographicType
 from utils.asset_directory_utils import resolve_image_path_to_filesystem
 from utils.icon_weights import DEFAULT_ICON_TYPE
+from utils.llm_provider import get_llm_provider, get_model
 
 DEFAULT_VALIDATION_RETRIES = 5
 MAX_PARALLEL_SLIDE_LAYOUTS = 10
@@ -3575,6 +3577,26 @@ def _require_finite_numbers(value: dict[str, Any], *, label: str) -> None:
             raise ValueError(f"{label} must contain only finite numbers")
 
 
+def _ollama_model_supports_vision() -> bool:
+    model_name = get_model().lower()
+    vision_model_markers = (
+        "-vl",
+        "-vision",
+        ":vision",
+        "llava",
+        "bakllava",
+        "moondream",
+        "minicpm-v",
+        "minicpm-o",
+        "gemma3",
+        "gemma4",
+        "llama4",
+        "pixtral",
+        "granite3.2-vision",
+    )
+    return any(marker in model_name for marker in vision_model_markers)
+
+
 def _walk_element_dicts(elements: list[dict[str, Any]]):
     for element in elements:
         if not isinstance(element, dict):
@@ -3661,6 +3683,20 @@ def generate_slide_layout(
         raise ValueError("source slide must contain at least one element")
 
     options = generation_options or LayoutGenerationOptions()
+    if get_llm_provider() == LLMProvider.OLLAMA and not _ollama_model_supports_vision():
+        LOGGER.info(
+            "[templates.v2.generate] skipping image-based model passes for "
+            "text-only Ollama model=%s; preserving source slide",
+            get_model(),
+        )
+        return _replace_content_image_urls(
+            _fallback_slide_layout(
+                source_layout,
+                enable_text_growth=options.text_growth,
+            ),
+            replace_visuals=options.visual_replacement,
+        )
+
     image_part = _openai_image_part(slide_image_url)
     visual_payload, visual_candidate_paths = (
         _visual_data_generation_payload(source_layout)

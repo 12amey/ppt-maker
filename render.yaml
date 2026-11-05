@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: ppt-maker
+    runtime: docker
+    plan: 1c-2g
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    disk:
+      name: ppt-maker-data
+      mountPath: /app_data
+      sizeGB: 10
+    envVars:
+      - key: PORT
+        value: "80"
+      - key: APP_DATA_DIRECTORY
+        value: /app_data
+      - key: TEMP_DIRECTORY
+        value: /tmp/presenton
+      - key: PRESENTON_HOST_HTTP_PORT
+        value: "80"
+      - key: PRESENTON_PUBLIC_URL
+        fromService:
+          type: web
+          name: ppt-maker
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ppt-maker-db
+          property: connectionString
+      - key: MIGRATE_DATABASE_ON_STARTUP
+        value: "true"
+      - key: DISABLE_AUTH
+        value: "false"
+      - key: NEXT_PUBLIC_DISABLE_AUTH
+        value: "false"
+      - key: AUTH_USERNAME
+        sync: false
+      - key: AUTH_PASSWORD
+        sync: false
+
+databases:
+  - name: ppt-maker-db
+    databaseName: ppt_maker
+    user: ppt_maker
+    plan: 0.5c-1g
+    region: singapore
+    ipAllowList: []

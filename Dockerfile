@@ -34,6 +34,8 @@ FROM node:22-bookworm-slim AS nextjs-builder
 WORKDIR /app/servers/nextjs
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG DISABLE_AUTH=true
+ARG NEXT_PUBLIC_DISABLE_AUTH=true
 
 COPY servers/nextjs/package.json servers/nextjs/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \

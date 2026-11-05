@@ -1,0 +1,15 @@
+services:
+  presenton:
+    image: ghcr.io/presenton/presenton:latest
+    container_name: presenton-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:80"
+    env_file:
+      - .env
+    environment:
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      PRESENTON_HOST_HTTP_PORT: "5001"
+      MIGRATE_DATABASE_ON_STARTUP: "true"
+    volumes:
+      - ./app_data:/app_data

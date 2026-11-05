@@ -8,6 +8,7 @@ export type TemplateSavePayload = UnknownRecord & {
   layouts: unknown;
 };
 export type PanelMode =
+  | "ai"
   | "blocks"
   | "texts"
   | "charts"

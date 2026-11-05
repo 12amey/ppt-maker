@@ -6,7 +6,6 @@ import { hasValidLLMConfig, normalizeLLMConfig } from '@/utils/storeHelpers';
 import { usePathname, useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store/store';
-import { isOllamaModelAvailable } from '@/utils/providerUtils';
 import { LLMConfig } from '@/types/llm_config';
 import {
   assertBackendReachable,
@@ -52,10 +51,12 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
   const role = useSelector((state: RootState) => state.userConfig.role);
   const isAdmin = role === "admin";
 
-  const route = usePathname();
+  const rawRoute = usePathname();
+  const route = rawRoute ? (rawRoute.length > 1 ? rawRoute.replace(/\/+$/, "") : rawRoute) : "";
   const shouldShowStartupSplash = !route?.startsWith("/pdf-maker");
   const isSettingsRoute =
     route === "/settings" || route?.startsWith("/settings/");
+  const isLocalToolRoute = ["/ppt-maker", "/dashboard", "/image-generation", "/video-generation", "/quality-analysis", "/templates", "/custom-template", "/template-preview"].includes(route);
   const [isLoading, setIsLoading] = useState(
     () => shouldShowStartupSplash
   );
@@ -77,6 +78,7 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
       role === null ||
       route === '/' ||
       isSettingsRoute ||
+      isLocalToolRoute ||
       route.startsWith('/pdf-maker')
     ) {
       return;
@@ -173,7 +175,7 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
     return () => {
       cancelled = true;
     };
-  }, [role, isAdmin, dispatch, isSettingsRoute, route, router]);
+  }, [role, isAdmin, dispatch, isSettingsRoute, isLocalToolRoute, route, router]);
 
   useEffect(() => {
     if (!shouldShowStartupSplash) {
@@ -194,12 +196,13 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
       return;
     }
 
+    const start = Date.now();
     const interval = setInterval(() => {
-      if (window.location.pathname === pathname) {
+      if (window.location.pathname === pathname || Date.now() - start > 2000) {
         clearInterval(interval);
         setIsLoading(false);
       }
-    }, 500);
+    }, 200);
   }
 
   const fetchUserConfigState = async () => {
@@ -267,6 +270,10 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
       llmConfig = normalizeLLMConfig(llmConfig);
 
       dispatch(setLLMConfig(llmConfig));
+      if (isLocalToolRoute) {
+        setIsLoading(false);
+        return;
+      }
 
       let hasPresentonCloud = false;
       if (llmConfig.LLM === 'presenton') {
@@ -302,33 +309,12 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
         return;
       }
       if (isValid) {
-        // Check if the selected Ollama model is pulled
-        if (llmConfig.LLM === 'ollama' && llmConfig.OLLAMA_MODEL) {
-          let isAvailable = false;
-          try {
-            isAvailable = await isOllamaModelAvailable(
-              llmConfig.OLLAMA_MODEL,
-              llmConfig.OLLAMA_URL
-            );
-          } catch (error) {
-            const backendUnavailable = isBackendConnectionError(error);
-            notify.error(
-              backendUnavailable ? "Cannot reach backend" : "Could not connect to Ollama",
-              error instanceof Error ? error.message : "Check the Ollama URL and try again.",
-              { id: backendUnavailable ? "backend-unreachable" : "ollama-unreachable" }
-            );
-            setIsLoading(false);
-            return;
-          }
-          if (!isAvailable) {
-            router.push('/');
-            setLoadingToFalseAfterNavigatingTo('/');
-            return;
-          }
-        }
+        // Keep editing available even when a configured local model is offline.
+        // Model connectivity is reported when the user requests generation.
         if (route === '/') {
-          router.push('/upload');
-          setLoadingToFalseAfterNavigatingTo('/upload');
+          const target = process.env.PRESENTON_LOCAL_SOURCE === "true" ? '/ppt-maker' : '/upload';
+          router.push(target);
+          setLoadingToFalseAfterNavigatingTo(target);
         } else {
           setIsLoading(false);
         }

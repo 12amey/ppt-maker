@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Presenton – License Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0d0f17;
+      --surface: #151825;
+      --surface2: #1c2033;
+      --border: rgba(255,255,255,0.08);
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-badge {
+      background: rgba(108,99,255,0.15);
+      color: var(--accent2);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(108,99,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* ─── Layout ─────────────────────────────────────────────── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 32px; flex: 1; }
+
+    /* ─── Inputs & Buttons ───────────────────────────────────── */
+    input, textarea, select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      font-family: inherit;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #5b53e0; }
+
+    .btn-danger {
+      background: rgba(239,68,68,0.12);
+      color: var(--danger);
+      border: 1px solid rgba(239,68,68,0.25);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+    .btn-success {
+      background: rgba(16,185,129,0.12);
+      color: var(--success);
+      border: 1px solid rgba(16,185,129,0.25);
+    }
+    .btn-success:hover { background: rgba(16,185,129,0.2); }
+
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ─── Stats Row ──────────────────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ─── Table ──────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      color: var(--muted);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      vertical-align: middle;
+    }
+
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .badge-active { background: rgba(16,185,129,0.12); color: var(--success); }
+    .badge-revoked { background: rgba(239,68,68,0.12); color: var(--danger); }
+    .badge-trial { background: rgba(245,158,11,0.12); color: var(--warning); }
+    .badge-permanent { background: rgba(108,99,255,0.12); color: var(--accent2); }
+
+    /* ─── Form Grid ──────────────────────────────────────────── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* ─── Alert / Toast ──────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 999;
+      display: none;
+      animation: slideUp 0.25s ease;
+      max-width: 360px;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Token Modal ────────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      max-width: 640px;
+      width: 95%;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .token-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 11px;
+      font-family: monospace;
+      word-break: break-all;
+      color: var(--accent2);
+      line-height: 1.6;
+      margin-bottom: 16px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* ─── Login Screen ───────────────────────────────────────── */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 380px;
+      text-align: center;
+    }
+
+    .login-logo {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    .login-sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+
+    /* ─── Misc ───────────────────────────────────────────────── */
+    .fingerprint { font-family: monospace; font-size: 11px; color: var(--muted); }
+    .text-success { color: var(--success); }
+    .text-danger { color: var(--danger); }
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .section-sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+    .actions-cell { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .loading { color: var(--muted); padding: 40px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- ── Login Screen ─────────────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">Presenton</div>
+    <div class="login-sub">License Admin Dashboard · Owner Only</div>
+    <div class="form-group" style="text-align:left; margin-bottom:16px;">
+      <label>Server URL</label>
+      <input id="server-url" type="url" value="http://localhost:8000" placeholder="https://licenses.your-domain.com"/>
+    </div>
+    <div class="form-group" style="text-align:left; margin-bottom:20px;">
+      <label>Admin Token</label>
+      <input id="admin-token" type="password" placeholder="Your secret admin token"/>
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="login()">Sign In →</button>
+  </div>
+</div>
+
+<!-- ── Main App ──────────────────────────────────────────────────────────────── -->
+<div id="main-app" style="display:none; flex-direction:column; flex:1;">
+  <header>
+    <div class="logo">⚡ Presenton</div>
+    <div class="header-badge">License Admin</div>
+    <div class="header-right">
+      <span style="font-size:13px; color:var(--muted)" id="server-label"></span>
+      <button class="btn btn-ghost" style="font-size:12px" onclick="logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Stats -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">–</div>
+        <div class="stat-label">Total Licenses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-success" id="stat-active">–</div>
+        <div class="stat-label">Active</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-danger" id="stat-revoked">–</div>
+        <div class="stat-label">Revoked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-trial" style="color:var(--warning)">–</div>
+        <div class="stat-label">Trial</div>
+      </div>
+    </div>
+
+    <!-- Issue License -->
+    <div class="card">
+      <div class="card-title">🔑 Issue New License</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Customer Name</label>
+          <input id="new-name" type="text" placeholder="Jane Smith"/>
+        </div>
+        <div class="form-group">
+          <label>Customer Email</label>
+          <input id="new-email" type="email" placeholder="jane@company.com"/>
+        </div>
+        <div class="form-group">
+          <label>Hardware Fingerprint (64-char SHA-256)</label>
+          <input id="new-fingerprint" type="text" placeholder="Customer pastes this from the app"/>
+        </div>
+        <div class="form-group">
+          <label>Tier</label>
+          <select id="new-tier">
+            <option value="trial">Trial</option>
+            <option value="standard" selected>Standard</option>
+            <option value="professional">Professional</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Expires (ISO date or "permanent")</label>
+          <input id="new-expires" type="text" value="permanent" placeholder="2027-01-01 or permanent"/>
+        </div>
+        <div class="form-group">
+          <label>Internal Notes (optional)</label>
+          <input id="new-notes" type="text" placeholder="Invoice #12345"/>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-primary" onclick="issueLicense()">⚡ Issue License</button>
+      </div>
+    </div>
+
+    <!-- License List -->
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span>📋 All Licenses</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input id="search-box" type="text" placeholder="Search by email…" style="width:200px" oninput="filterTable()"/>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="loadLicenses()">↺ Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Machine ID</th>
+              <th>Tier</th>
+              <th>Expires</th>
+              <th>Status</th>
+              <th>Last Seen</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="license-tbody">
+            <tr><td colspan="7" class="loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Token Modal ─────────────────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="token-modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-title">🎉 License Token</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+      Send this token to the customer. They paste it into the Presenton app to activate.
+    </p>
+    <div class="token-box" id="token-display"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="copyToken()">📋 Copy Token</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Transfer Modal ─────────────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="transfer-modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-title">🔄 Transfer License</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+      Enter the new machine's hardware fingerprint (customer gets it from the app's Settings page).
+    </p>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>New Hardware Fingerprint</label>
+      <input id="transfer-fingerprint" type="text" placeholder="64-character SHA-256 fingerprint"/>
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Reason (optional)</label>
+      <input id="transfer-reason" type="text" placeholder="e.g. new laptop"/>
+    </div>
+    <input type="hidden" id="transfer-license-id"/>
+    <div class="modal-actions">
+      <button class="btn btn-success" onclick="confirmTransfer()">✓ Transfer</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+
+let API_URL = '';
+let ADMIN_TOKEN = '';
+let ALL_LICENSES = [];
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+function login() {
+  API_URL = document.getElementById('server-url').value.trim().replace(/\/$/, '');
+  ADMIN_TOKEN = document.getElementById('admin-token').value.trim();
+  if (!API_URL || !ADMIN_TOKEN) { toast('Please fill in all fields', 'danger'); return; }
+
+  // Test connection
+  apiFetch('/admin/licenses?limit=1')
+    .then(() => {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('main-app').style.display = 'flex';
+      document.getElementById('server-label').textContent = API_URL;
+      loadLicenses();
+    })
+    .catch(err => toast('Connection failed: ' + err.message, 'danger'));
+}
+
+function logout() {
+  ADMIN_TOKEN = '';
+  API_URL = '';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+}
+
+// ─── API Helpers ──────────────────────────────────────────────────────────────
+
+async function apiFetch(path, method = 'GET', body = null) {
+  const opts = {
+    method,
+    headers: {
+      'Authorization': 'Bearer ' + ADMIN_TOKEN,
+      'Content-Type': 'application/json',
+    },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_URL + path, opts);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+// ─── Load Licenses ────────────────────────────────────────────────────────────
+
+async function loadLicenses() {
+  try {
+    ALL_LICENSES = await apiFetch('/admin/licenses');
+    renderTable(ALL_LICENSES);
+    updateStats(ALL_LICENSES);
+  } catch(err) {
+    toast('Failed to load licenses: ' + err.message, 'danger');
+  }
+}
+
+function updateStats(licenses) {
+  document.getElementById('stat-total').textContent = licenses.length;
+  document.getElementById('stat-active').textContent = licenses.filter(l => !l.revoked).length;
+  document.getElementById('stat-revoked').textContent = licenses.filter(l => l.revoked).length;
+  document.getElementById('stat-trial').textContent = licenses.filter(l => l.tier === 'trial').length;
+}
+
+function filterTable() {
+  const q = document.getElementById('search-box').value.toLowerCase();
+  renderTable(ALL_LICENSES.filter(l =>
+    l.customer_email.toLowerCase().includes(q) ||
+    l.customer_name.toLowerCase().includes(q)
+  ));
+}
+
+function renderTable(licenses) {
+  const tbody = document.getElementById('license-tbody');
+  if (!licenses.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="loading">No licenses found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = licenses.map(l => {
+    const badgeClass = l.revoked ? 'badge-revoked' : 'badge-active';
+    const badgeText = l.revoked ? 'REVOKED' : 'ACTIVE';
+    const tierClass = l.tier === 'trial' ? 'badge-trial' : 'badge-permanent';
+    const shortFp = l.fingerprint ? l.fingerprint.slice(0, 12).toUpperCase() : '–';
+    const lastSeen = l.last_validated_at
+      ? new Date(l.last_validated_at).toLocaleDateString()
+      : 'Never';
+
+    return `<tr>
+      <td>
+        <div style="font-weight:500">${esc(l.customer_name)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(l.customer_email)}</div>
+      </td>
+      <td><span class="fingerprint">${shortFp}…</span></td>
+      <td><span class="badge ${tierClass}">${l.tier}</span></td>
+      <td>${l.expires === 'permanent' ? '∞ Permanent' : l.expires}</td>
+      <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+      <td style="color:var(--muted);font-size:12px">${lastSeen}</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px"
+            onclick="showToken('${esc(l.id)}', '${esc(l.token)}')">Token</button>
+          ${!l.revoked ? `
+            <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px"
+              onclick="showTransfer('${esc(l.id)}')">Transfer</button>
+            <button class="btn btn-danger" style="font-size:11px;padding:5px 10px"
+              onclick="revoke('${esc(l.id)}')">Revoke</button>
+          ` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Issue License ────────────────────────────────────────────────────────────
+
+async function issueLicense() {
+  const name = document.getElementById('new-name').value.trim();
+  const email = document.getElementById('new-email').value.trim();
+  const fingerprint = document.getElementById('new-fingerprint').value.trim();
+  const tier = document.getElementById('new-tier').value;
+  const expires = document.getElementById('new-expires').value.trim();
+  const notes = document.getElementById('new-notes').value.trim();
+
+  if (!name || !email || !fingerprint) {
+    toast('Please fill in name, email, and fingerprint', 'danger');
+    return;
+  }
+
+  if (fingerprint.length !== 64) {
+    toast('Fingerprint must be exactly 64 hex characters', 'danger');
+    return;
+  }
+
+  try {
+    const result = await apiFetch('/admin/licenses', 'POST', {
+      customer_name: name, customer_email: email,
+      fingerprint, tier, expires, notes,
+    });
+    toast(`License issued for ${name}!`, 'success');
+    showTokenModal(result.token);
+    loadLicenses();
+    // Clear form
+    ['new-name','new-email','new-fingerprint','new-notes'].forEach(id =>
+      document.getElementById(id).value = '');
+  } catch(err) {
+    toast('Failed to issue license: ' + err.message, 'danger');
+  }
+}
+
+// ─── Revoke ───────────────────────────────────────────────────────────────────
+
+async function revoke(licenseId) {
+  const reason = prompt('Revocation reason (optional):') ?? '';
+  if (!confirm('Revoke this license? The customer will lose access.')) return;
+  try {
+    await apiFetch(`/admin/licenses/${licenseId}/revoke`, 'POST', { reason });
+    toast('License revoked.', 'success');
+    loadLicenses();
+  } catch(err) {
+    toast('Revoke failed: ' + err.message, 'danger');
+  }
+}
+
+// ─── Transfer ─────────────────────────────────────────────────────────────────
+
+function showTransfer(licenseId) {
+  document.getElementById('transfer-license-id').value = licenseId;
+  document.getElementById('transfer-fingerprint').value = '';
+  document.getElementById('transfer-reason').value = '';
+  document.getElementById('transfer-modal').style.display = 'flex';
+}
+
+async function confirmTransfer() {
+  const licenseId = document.getElementById('transfer-license-id').value;
+  const newFp = document.getElementById('transfer-fingerprint').value.trim();
+  const reason = document.getElementById('transfer-reason').value.trim();
+
+  if (newFp.length !== 64) {
+    toast('Fingerprint must be 64 characters', 'danger'); return;
+  }
+
+  try {
+    const result = await apiFetch(`/admin/licenses/${licenseId}/transfer`, 'POST',
+      { new_fingerprint: newFp, reason });
+    closeModal();
+    showTokenModal(result.new_token);
+    toast('License transferred! Send the new token to the customer.', 'success');
+    loadLicenses();
+  } catch(err) {
+    toast('Transfer failed: ' + err.message, 'danger');
+  }
+}
+
+// ─── Modals ───────────────────────────────────────────────────────────────────
+
+function showToken(id, token) {
+  showTokenModal(token);
+}
+
+let _currentToken = '';
+function showTokenModal(token) {
+  _currentToken = token;
+  document.getElementById('token-display').textContent = token;
+  document.getElementById('token-modal').style.display = 'flex';
+}
+
+function copyToken() {
+  navigator.clipboard.writeText(_currentToken).then(() => toast('Token copied!', 'success'));
+}
+
+function closeModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('token-modal').style.display = 'none';
+  document.getElementById('transfer-modal').style.display = 'none';
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+let _toastTimer;
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.color = type === 'danger' ? 'var(--danger)'
+                 : type === 'success' ? 'var(--success)'
+                 : 'var(--text)';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+</body>
+</html>

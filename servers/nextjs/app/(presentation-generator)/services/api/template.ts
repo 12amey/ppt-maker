@@ -90,6 +90,7 @@ export interface CreateTemplateLayoutPayload {
 export interface GenerateTemplateLayoutPayload {
     template_id: string;
     prompt: string;
+    source_layout?: TemplateV2Layout;
 }
 
 export interface GenerateTemplateLayoutResponse {

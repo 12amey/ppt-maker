@@ -10,7 +10,8 @@ Supabase Free Postgres project for relational data.
    for this Render service), or use an existing project.
 2. In Supabase, open **Connect**, choose **Session pooler**, and copy its
    PostgreSQL connection string. Replace the password placeholder with your
-   database password; URL-encode reserved characters in that password.
+   database password and URL-encode reserved characters in that password (for
+   example, `@` becomes `%40`).
 3. Push this repository to GitHub and connect it to Render. In Render, choose
    **New → Blueprint**, select this repository, then apply the Blueprint.
 4. Enter the Supabase connection string for `DATABASE_URL`
@@ -24,6 +25,33 @@ schema migrations on startup. Use Supabase's **Session pooler** connection
 string for Render. It supports IPv4; Supabase's direct connection is IPv6-only
 on the Free plan. Keep the database URL in Render's secret environment settings;
 never commit it to Git.
+
+If Render logs show `failed to resolve host` with part of the database password
+before `@aws-...pooler.supabase.com`, the password was not URL-encoded. Reset the
+Supabase database password if any of it appeared in logs, URL-encode the new
+password, update `DATABASE_URL` in Render, and redeploy. For example:
+
+```text
+postgresql://postgres.<project-ref>:<URL-encoded-password>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+## UptimeRobot
+
+Create an **HTTP(s)** monitor and use the public Render service URL with this
+path:
+
+```text
+https://<your-service>.onrender.com/api/v1/health
+```
+
+Find the exact `onrender.com` hostname in the service dashboard (use the service
+URL/Open link, not the `dashboard.render.com` address). The endpoint returns
+HTTP 200 only when both FastAPI and the database respond, and HTTP 503 if the
+database is unavailable. Set the monitor's expected status to 200.
+
+A check every 5 minutes keeps the free Render service from idling out. That
+keeps it warm but uses nearly all of the workspace's 750 monthly free instance
+hours, so account for any other free services in the same workspace.
 
 ## Render resources and runtime notes
 

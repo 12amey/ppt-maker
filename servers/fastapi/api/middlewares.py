@@ -28,6 +28,7 @@ class UserConfigEnvUpdateMiddleware(BaseHTTPMiddleware):
 
 class SessionAuthMiddleware(BaseHTTPMiddleware):
     _PUBLIC_AUTH_PATHS = {
+        "/api/v1/health",
         "/api/v1/auth/status",
         "/api/v1/auth/verify",
         "/api/v1/auth/setup",

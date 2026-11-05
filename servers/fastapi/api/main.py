@@ -3,8 +3,9 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from starlette.requests import Request
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, JSONResponse
 
 from api.lifespan import app_lifespan
 from api.middlewares import SessionAuthMiddleware, UserConfigEnvUpdateMiddleware
@@ -17,6 +18,7 @@ from api.v1.webhook.router import API_V1_WEBHOOK_ROUTER
 from api.v1.media.router import router as API_V1_MEDIA_ROUTER
 from api.v1.media.quality import router as API_V1_QUALITY_ROUTER
 from api.v2.router import API_V2_ROUTER
+from services.database import async_session_maker
 from utils.get_env import (
     get_app_data_directory_env,
     get_sentry_dsn_env,
@@ -105,6 +107,20 @@ app.add_middleware(
 
 app.add_middleware(UserConfigEnvUpdateMiddleware)
 app.add_middleware(SessionAuthMiddleware)
+
+
+@app.get("/api/v1/health", include_in_schema=False)
+async def health_check():
+    """Public service and database readiness endpoint for Render/UptimeRobot."""
+    try:
+        async with async_session_maker() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": "unavailable"},
+        )
+    return {"status": "ok", "database": "ok"}
 
 
 @app.middleware("http")

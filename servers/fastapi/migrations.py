@@ -61,7 +61,9 @@ def _run_migrations() -> None:
     # Alembic uses synchronous engines; strip async driver prefixes.
     database_url = to_sync_sqlalchemy_url(database_url)
 
-    config.set_main_option("sqlalchemy.url", database_url)
+    # ConfigParser treats percent signs as interpolation markers. Double them
+    # here so Alembic reads the literal percent escapes in encoded passwords.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     _repair_orphan_alembic_revision(config, database_url)
     _stamp_legacy_database_if_needed(config, database_url)
 

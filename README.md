@@ -340,8 +340,8 @@ Deploy and manage Presenton across your organization with versioned Helm charts 
   </p>
   </blockquote>
 
-For a managed Render deployment with PostgreSQL and persistent file storage,
-see the **[Render deployment guide](docs/deploy-render.md)** and the root
+For the free Render and Supabase Postgres setup, including the temporary local
+file storage limitation, see the **[Render deployment guide](docs/deploy-render.md)** and the root
 [`render.yaml`](render.yaml) Blueprint.
 
 #

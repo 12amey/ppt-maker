@@ -1,30 +1,42 @@
 # Deploy on Render
 
 This repository includes a Render Blueprint at [`render.yaml`](../render.yaml).
-It builds the existing Docker image, provisions PostgreSQL, and attaches a
-persistent disk for uploads, exports, account configuration, and other app data.
+It builds the existing Docker image on Render's Free web service plan and uses a
+Supabase Free Postgres project for relational data.
 
 ## Deploy
 
-1. Push this repository to GitHub and connect it to Render.
-2. In Render, choose **New → Blueprint**, select this repository, then apply
-   the Blueprint.
-3. Set the prompted `AUTH_USERNAME` and `AUTH_PASSWORD` values in Render. Use
-   an administrator name and a unique password with at least 8 characters.
-4. Wait for the web service to finish its first deploy, then sign in and
+1. Create a Supabase Free project in a nearby region (Singapore is a good match
+   for this Render service), or use an existing project.
+2. In Supabase, open **Connect**, choose **Session pooler**, and copy its
+   PostgreSQL connection string. Replace the password placeholder with your
+   database password; URL-encode reserved characters in that password.
+3. Push this repository to GitHub and connect it to Render. In Render, choose
+   **New → Blueprint**, select this repository, then apply the Blueprint.
+4. Enter the Supabase connection string for `DATABASE_URL`
+   and set the prompted `AUTH_USERNAME` and `AUTH_PASSWORD` values in Render.
+   Use an administrator name and a unique password with at least 8 characters.
+5. Wait for the web service to finish its first deploy, then sign in and
    configure an LLM and any image/search providers in the app's Settings.
 
-The Blueprint connects the web service to Render Postgres over Render's private
-network. Database credentials and the public app URL are wired from Render
-resources; no credentials are stored in Git. The Postgres instance blocks
-external IP connections.
+The application supports PostgreSQL through `DATABASE_URL` and applies its
+schema migrations on startup. Use Supabase's **Session pooler** connection
+string for Render. It supports IPv4; Supabase's direct connection is IPv6-only
+on the Free plan. Keep the database URL in Render's secret environment settings;
+never commit it to Git.
 
 ## Render resources and runtime notes
 
-- The web service uses the `1c-2g` plan and a 10 GB persistent disk. Render
-  persistent disks require a paid web service. The database uses the `0.5c-1g`
-  Postgres plan. Adjust these plans and disk size in `render.yaml` to match your
-  expected traffic and storage use before applying the Blueprint.
+- The web service is configured with Render's `free` plan. Free services sleep
+  after 15 minutes without traffic, have 750 free instance hours per month, and
+  use an ephemeral filesystem. The app can take about a minute to wake up.
+- Supabase Free includes a 500 MB Postgres database. Free projects can pause
+  after a week of low activity. Check current platform limits before relying on
+  this setup for production data.
+- The Render filesystem is temporary. Uploads, generated images, and exports
+  under `/app_data` can disappear when the service sleeps, restarts, or deploys.
+  PostgreSQL keeps application records, but it does not preserve these files.
+  This Blueprint does not configure Supabase Storage for file persistence.
 - `DISABLE_AUTH=false` is set for both the API runtime and the Next.js build.
   Render prompts for the first admin username and password; the app initializes
   the administrator on first boot.
@@ -37,7 +49,3 @@ external IP connections.
 - The optional ComfyUI image/video workflows require a reachable ComfyUI server
   and are not provisioned by this Blueprint. Set `COMFYUI_URL` and the relevant
   workflow settings if you connect a hosted ComfyUI instance.
-
-The container filesystem outside `/app_data` is ephemeral. The attached disk
-preserves the database-independent files and settings stored under `/app_data`;
-PostgreSQL preserves application records.

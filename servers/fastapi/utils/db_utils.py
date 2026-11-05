@@ -1,7 +1,9 @@
 import os
-from utils.get_env import get_app_data_directory_env, get_database_url_env
-from urllib.parse import urlsplit, urlunsplit, parse_qsl
+import re
 import ssl
+
+from utils.get_env import get_app_data_directory_env, get_database_url_env
+from urllib.parse import parse_qsl, quote, unquote, urlsplit, urlunsplit
 
 
 def _ensure_sqlite_parent_dir(database_url: str) -> None:
@@ -20,6 +22,42 @@ def _ensure_sqlite_parent_dir(database_url: str) -> None:
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
+
+
+_SUPABASE_POOLER_URL_RE = re.compile(
+    r"^(?P<scheme>postgres(?:ql)?(?:\+\w+)?://)"
+    r"(?P<userinfo>.*)@(?P<host>[a-z0-9.-]+\.pooler\.supabase\.com)"
+    r"(?P<port>:\d+)?(?P<tail>(?:/[^?#]*)?(?:\?[^#]*)?(?:#.*)?)$",
+    re.IGNORECASE,
+)
+
+
+def _encode_supabase_pooler_password(database_url: str) -> str:
+    """Encode password characters that would otherwise confuse URL parsing.
+
+    Supabase pooler credentials are commonly pasted into environment variables
+    with raw URL-reserved characters in the password. In particular, an `@`
+    can make SQLAlchemy treat the remaining password as part of the hostname.
+    Only normalize URLs whose host is recognizably a Supabase pooler.
+    """
+    match = _SUPABASE_POOLER_URL_RE.match(database_url)
+    if not match:
+        return database_url
+
+    username, separator, password = match.group("userinfo").partition(":")
+    if not separator:
+        return database_url
+
+    encoded_password = quote(unquote(password), safe="")
+    if encoded_password == password:
+        return database_url
+
+    return (
+        f"{match.group('scheme')}{username}:{encoded_password}"
+        f"@{match.group('host')}{match.group('port') or ''}{match.group('tail')}"
+    )
+
+
 def _int_env(name: str, default: int) -> int:
     """Read an integer from an environment variable, falling back to *default*."""
     raw = os.getenv(name)
@@ -57,7 +95,7 @@ def get_pool_kwargs() -> dict:
 def get_database_url_and_connect_args() -> tuple[str, dict]:
     db_env = get_database_url_env()
     if db_env:
-        database_url = db_env
+        database_url = _encode_supabase_pooler_password(db_env)
     else:
         app_data = get_app_data_directory_env()
         clean_path = os.path.abspath(os.path.join(app_data, "fastapi.db")).replace("\\", "/")
